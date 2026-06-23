@@ -1,0 +1,13 @@
+.env
+.env.local
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+storage/uploads/
+*.db
+dist/
+.next/
+apps/backend/.venv/
+*/storage/*
+*/.mastra/*
