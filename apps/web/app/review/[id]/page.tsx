@@ -414,7 +414,7 @@ export default function ReviewPage() {
                 {submitting ? "Saving..." : "Submit Corrected Invoice"}
               </button>
               <a
-                href="/"
+                href="/agents/invoice-ocr"
                 className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
               >
                 Process Another
