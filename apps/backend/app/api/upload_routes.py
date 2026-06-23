@@ -14,7 +14,8 @@ router = APIRouter()
 
 ALLOWED_MIME = {
     "application/pdf", "image/jpeg", "image/jpg", "image/png",
-    "image/webp", "image/tiff", "image/bmp"
+    "image/webp", "image/tiff", "image/bmp", "image/heic", "image/heif",
+    "image/heic-sequence", "image/heif-sequence",
 }
 
 
@@ -27,7 +28,7 @@ async def upload_invoice(
     content_type = file.content_type or ""
     if content_type not in ALLOWED_MIME:
         suffix = Path(file.filename or "").suffix.lower()
-        if suffix not in {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp"}:
+        if suffix not in {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp", ".heic", ".heif"}:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {content_type}")
 
     doc_data = DocumentCreate(

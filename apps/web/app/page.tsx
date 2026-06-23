@@ -67,7 +67,7 @@ export default function UploadPage() {
               ref={fileRef}
               type="file"
               className="hidden"
-              accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff,.tif,.bmp"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff,.tif,.bmp,.heic,.heif"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
             {file ? (
@@ -78,7 +78,7 @@ export default function UploadPage() {
             ) : (
               <div>
                 <p className="text-gray-500">Drag & drop your invoice here, or click to browse</p>
-                <p className="text-sm text-gray-400 mt-2">PDF, JPG, PNG, WEBP, TIFF, BMP</p>
+                <p className="text-sm text-gray-400 mt-2">PDF, JPG, PNG, WEBP, TIFF, BMP, HEIC, HEIF</p>
               </div>
             )}
           </div>

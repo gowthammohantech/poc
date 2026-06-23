@@ -92,19 +92,33 @@ def _fallback_route(payload: dict) -> dict:
 
 
 async def call_extraction_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
+    image_paths: List[str] = payload.get("page_image_paths", [])
     prompt = (
-        f"Extract structured invoice data from this OCR text.\n\n"
+        f"Extract structured invoice data from this OCR text"
+        f"{' and the attached invoice page images' if image_paths else ''}.\n\n"
         f"Document ID: {payload.get('document_id')}\n"
         f"Expected fields: {payload.get('expected_fields', [])}\n\n"
         f"OCR Text:\n{payload.get('ocr_text', '')}\n\n"
         f"Return the complete invoice JSON following the schema exactly. "
         f"Use null for missing values. Never hallucinate values."
     )
+    content_parts: List[Dict[str, str]] = [{"type": "text", "text": prompt}]
+    for path in image_paths[:5]:
+        try:
+            image_data = Path(path).read_bytes()
+            b64 = base64.b64encode(image_data).decode()
+            content_parts.append({
+                "type": "image",
+                "image": f"data:image/png;base64,{b64}",
+            })
+        except Exception:
+            pass
+
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             r = await client.post(
                 f"{MASTRA_URL}/api/agents/invoiceExtractionAgent/generate",
-                json={"messages": [{"role": "user", "content": prompt}]},
+                json={"messages": [{"role": "user", "content": content_parts}]},
             )
             r.raise_for_status()
             text = _parse_agent_text(r.json())

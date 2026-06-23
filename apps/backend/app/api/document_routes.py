@@ -96,9 +96,15 @@ async def process_document(document_id: str):
                 "ocr_text": ocr_result["text"],
                 "expected_fields": doc.get("expected_fields", ""),
             }
+            # Moderate and complex documents benefit from the page image as a
+            # second source of truth for tables, handwritten marks, and layouts.
+            if (doc.get("complexity_score") or 0) > 40:
+                extraction_payload["page_image_paths"] = preprocessed_paths
+                processing_mode = "OCR_THEN_LLM_WITH_VISION"
             invoice_json = await mastra_client.call_extraction_agent(extraction_payload)
             await docs.log_step(document_id, "EXTRACTION", "SUCCESS",
-                                 f"Extracted via {final_engine} → LLM")
+                                 f"Extracted via {final_engine} → LLM"
+                                 f"{' with page images' if extraction_payload.get('page_image_paths') else ''}")
 
     if final_engine == "OPENAI_VISION_LLM" or processing_mode == "DIRECT_LLM":
         # Step 2c: Direct Vision extraction

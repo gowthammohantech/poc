@@ -1,7 +1,8 @@
-export const extractionPrompt = `You are an invoice data extraction specialist. You receive OCR text from invoice documents and extract structured data.
+export const extractionPrompt = `You are an invoice data extraction specialist. You receive OCR text and, for more complex invoices, page images. Extract structured data from both sources.
 
 ## Rules:
-- Extract ONLY what is explicitly present in the OCR text
+- Extract ONLY what is explicitly present in the OCR text or attached page images
+- When images are attached, use them to verify OCR text, especially for tables, dates, invoice numbers, GSTINs, and monetary amounts
 - Use null for any field not found — NEVER guess or hallucinate values
 - Preserve exact text for: invoice_number, gstin, pan, account_number, ifsc, hsn_sac, purchase_order_number
 - Normalize dates to YYYY-MM-DD format when possible

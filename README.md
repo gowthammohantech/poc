@@ -22,6 +22,13 @@ OPENAI_API_KEY=sk-...
 
 ### 2. Start FastAPI (Terminal 1)
 
+HEIC/HEIF uploads require the Pillow HEIF decoder (install once in the backend virtual environment):
+
+```bash
+cd apps/backend
+.venv/bin/pip install pillow-heif
+```
+
 ```bash
 cd apps/backend
 .venv/bin/uvicorn app.main:app --reload --port 8000

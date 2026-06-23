@@ -4,7 +4,8 @@ from typing import List
 from PIL import Image
 
 POPPLER_PATH = os.getenv("POPPLER_PATH", "/opt/homebrew/bin")
-SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp"}
+HEIF_EXTS = {".heic", ".heif"}
+SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp", *HEIF_EXTS}
 
 
 def convert_to_pages(source_path: str, output_dir: Path) -> List[str]:
@@ -35,6 +36,16 @@ def _pdf_to_pages(pdf_path: str, output_dir: Path) -> List[str]:
 
 
 def _image_to_page(image_path: str, output_dir: Path) -> List[str]:
+    if Path(image_path).suffix.lower() in HEIF_EXTS:
+        try:
+            from pillow_heif import register_heif_opener
+        except ImportError as exc:
+            raise ValueError(
+                "HEIC/HEIF support requires the pillow-heif package. "
+                "Install it with: pip install pillow-heif"
+            ) from exc
+        register_heif_opener()
+
     img = Image.open(image_path)
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
