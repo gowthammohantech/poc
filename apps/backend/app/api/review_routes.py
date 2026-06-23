@@ -18,6 +18,7 @@ async def get_review(document_id: str):
     pages = await docs.get_pages(document_id)
     extraction = await docs.get_extraction_result(document_id)
     validation = await docs.get_validation_result(document_id)
+    ocr_result = await docs.get_ocr_result(document_id)
 
     page_urls = []
     for p in pages:
@@ -37,6 +38,10 @@ async def get_review(document_id: str):
         # confidence, validation, and the actual form-ready invoice payload.
         "invoice": extraction.get("invoice_json", {}).get("invoice", {}) if extraction else {},
         "confidence": extraction.get("confidence_json", {}) if extraction else {},
+        "ocr_reference": {
+            "engine": ocr_result.get("engine"),
+            "pages": ocr_result.get("metadata", {}).get("page_references", []),
+        } if ocr_result else None,
         "validation": {
             "status": validation.get("status") if validation else "PENDING",
             "rule_checks": validation.get("rule_checks_json", []) if validation else [],

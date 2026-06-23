@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from PIL import Image
 
 CONFIDENCE_THRESHOLD = 0.70
 
@@ -15,30 +16,55 @@ def run_paddle(image_paths: List[str]) -> Dict[str, Any]:
             "metadata": {"engine": "PADDLEOCR", "error": "paddleocr not installed"},
         }
 
-    ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+    # PaddleOCR 3.x removed the former ``show_log`` and ``use_angle_cls``
+    # constructor options. The minimal constructor works across the supported
+    # installation and keeps this engine from failing before it reads a page.
+    ocr = PaddleOCR(lang="en")
     all_text_parts = []
     all_confidences = []
+    page_references = []
+    errors = []
     word_count = 0
 
     for path in image_paths:
         try:
-            result = ocr.ocr(path, cls=True)
-            if not result or not result[0]:
+            with Image.open(path) as image:
+                image_width, image_height = image.size
+            result = ocr.predict(path)
+            if not result:
                 all_text_parts.append("")
+                page_references.append({"width": image_width, "height": image_height, "boxes": []})
                 continue
-            lines = []
-            for line in result[0]:
-                if line and len(line) >= 2:
-                    text_info = line[1]
-                    if isinstance(text_info, (list, tuple)) and len(text_info) >= 2:
-                        text = str(text_info[0])
-                        conf = float(text_info[1])
-                        lines.append(text)
-                        all_confidences.append(conf)
-                        word_count += len(text.split())
+            page_result = result[0]
+            texts = page_result.get("rec_texts", [])
+            scores = page_result.get("rec_scores", [])
+            polygons = page_result.get("rec_polys", [])
+            lines = [str(text) for text in texts if str(text).strip()]
+            boxes = []
+            for text, confidence, coordinates in zip(texts, scores, polygons):
+                text = str(text)
+                if not text.strip():
+                    continue
+                conf = float(confidence)
+                all_confidences.append(conf)
+                word_count += len(text.split())
+                if coordinates is not None and len(coordinates):
+                    xs = [float(point[0]) for point in coordinates]
+                    ys = [float(point[1]) for point in coordinates]
+                    boxes.append({
+                        "text": text,
+                        "x": min(xs),
+                        "y": min(ys),
+                        "width": max(xs) - min(xs),
+                        "height": max(ys) - min(ys),
+                        "confidence": conf * 100,
+                    })
             all_text_parts.append("\n".join(lines))
+            page_references.append({"width": image_width, "height": image_height, "boxes": boxes})
         except Exception as e:
             all_text_parts.append("")
+            page_references.append({"width": 0, "height": 0, "boxes": []})
+            errors.append(f"{type(e).__name__}: {e}")
 
     combined_text = "\n\n--- PAGE BREAK ---\n\n".join(all_text_parts)
     avg_confidence = float(sum(all_confidences) / len(all_confidences)) if all_confidences else 0.0
@@ -52,5 +78,7 @@ def run_paddle(image_paths: List[str]) -> Dict[str, Any]:
             "engine": "PADDLEOCR",
             "pages_processed": len(image_paths),
             "avg_confidence": avg_confidence,
+            "page_references": page_references,
+            "errors": errors,
         },
     }

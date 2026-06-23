@@ -75,6 +75,13 @@ async def process_document(document_id: str):
 
         if ocr_result.get("low_confidence") or not ocr_result.get("text", "").strip():
             # All local OCR failed — escalate to LLM
+            # Preserve its spatial references for the review screen even when
+            # vision extraction becomes the authoritative result.
+            await docs.save_ocr_result(
+                document_id, final_engine,
+                ocr_result.get("text", ""), ocr_result.get("confidence", 0.0),
+                ocr_result.get("word_count", 0), ocr_result.get("metadata", {})
+            )
             await docs.log_step(document_id, "OCR", "WARNING",
                                  "Local OCR low confidence, escalating to OpenAI Vision")
             final_engine = "OPENAI_VISION_LLM"
@@ -135,29 +142,69 @@ async def process_document(document_id: str):
     await docs.update_document_status(document_id, "EXTRACTED",
                                        ocr_engine=final_engine, processing_mode=processing_mode)
 
-    # Step 3: Deterministic validation
+    async def validate_extraction(candidate: dict):
+        rule_checks = run_all_rules(candidate)
+        rule_checks_dicts = [c.dict() for c in rule_checks]
+        llm_val = await mastra_client.call_validation_agent({
+            "document_id": document_id,
+            "invoice_json": candidate,
+        })
+        llm_checks = llm_val.get("llm_checks", [])
+        llm_warnings = llm_val.get("warnings", [])
+        warnings = [c.message for c in rule_checks if not c.passed and c.rule not in (
+            "invoice_number_present", "invoice_date_valid", "total_math_check"
+        )] + llm_warnings
+        errors = [c.message for c in rule_checks if not c.passed and c.rule in (
+            "invoice_number_present", "invoice_date_valid", "total_math_check"
+        )]
+        return (
+            rule_checks_dicts,
+            llm_checks,
+            warnings,
+            errors,
+            determine_validation_status(rule_checks, llm_checks),
+        )
+
+    # Step 3: validate the local-OCR extraction first.
     await docs.update_document_status(document_id, "VALIDATING")
-    rule_checks = run_all_rules(invoice_json)
-    rule_checks_dicts = [c.dict() for c in rule_checks]
+    rule_checks_dicts, llm_checks, warnings, errors, val_status = await validate_extraction(invoice_json)
 
-    # Step 4: LLM validation via Mastra
-    validation_payload = {
-        "document_id": document_id,
-        "invoice_json": invoice_json,
-    }
-    llm_val = await mastra_client.call_validation_agent(validation_payload)
-    llm_checks = llm_val.get("llm_checks", [])
-    llm_warnings = llm_val.get("warnings", [])
-
-    # Step 5: Merge and determine status
-    warnings = [c.message for c in rule_checks if not c.passed and c.rule not in (
-        "invoice_number_present", "invoice_date_valid", "total_math_check"
-    )] + llm_warnings
-    errors = [c.message for c in rule_checks if not c.passed and c.rule in (
-        "invoice_number_present", "invoice_date_valid", "total_math_check"
-    )]
-
-    val_status = determine_validation_status(rule_checks, llm_checks)
+    # A deterministic INVALID result means required invoice data is missing or
+    # inconsistent. Give the vision model one image-based recovery attempt.
+    # Do not retry an extraction that already came from direct vision.
+    if val_status == "INVALID" and final_engine != "OPENAI_VISION_LLM":
+        await docs.log_step(
+            document_id, "VISION_RETRY", "WARNING",
+            "Initial OCR extraction was invalid; retrying with OpenAI Vision page images",
+        )
+        await docs.update_document_status(document_id, "EXTRACTING")
+        retried_invoice = await mastra_client.call_direct_vision_agent({
+            "document_id": document_id,
+            "page_image_paths": preprocessed_paths,
+            "expected_fields": doc.get("expected_fields", ""),
+        })
+        if retried_invoice:
+            invoice_json = retried_invoice
+            final_engine = "OPENAI_VISION_LLM"
+            processing_mode = "DIRECT_LLM_RETRY_AFTER_INVALID"
+            invoice_json["document_id"] = document_id
+            invoice_json.setdefault("metadata", {})
+            invoice_json["metadata"].update({
+                "ocr_engine": final_engine,
+                "processing_mode": processing_mode,
+                "complexity_score": doc.get("complexity_score"),
+                "pages": len(pages),
+            })
+            confidence_json = invoice_json.get("confidence", {})
+            await docs.save_extraction_result(document_id, invoice_json, confidence_json)
+            await docs.update_document_status(
+                document_id, "EXTRACTED", ocr_engine=final_engine, processing_mode=processing_mode
+            )
+            await docs.update_document_status(document_id, "VALIDATING")
+            rule_checks_dicts, llm_checks, warnings, errors, val_status = await validate_extraction(invoice_json)
+            await docs.log_step(document_id, "VISION_RETRY", "SUCCESS", f"Retry status: {val_status}")
+        else:
+            await docs.log_step(document_id, "VISION_RETRY", "FAILED", "OpenAI Vision returned no extraction")
 
     await docs.save_validation_result(
         document_id, val_status, rule_checks_dicts, llm_checks, warnings, errors

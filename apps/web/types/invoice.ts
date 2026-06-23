@@ -99,6 +99,26 @@ export interface InvoiceMetadata {
   pages: number;
 }
 
+export interface OcrBox {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence: number;
+}
+
+export interface OcrReferencePage {
+  width: number;
+  height: number;
+  boxes: OcrBox[];
+}
+
+export interface OcrReference {
+  engine: string;
+  pages: OcrReferencePage[];
+}
+
 export interface InvoiceOutput {
   document_id: string;
   invoice: InvoiceData;
@@ -113,6 +133,7 @@ export interface ReviewData {
   page_urls: string[];
   invoice: InvoiceData;
   confidence: Confidence;
+  ocr_reference: OcrReference | null;
   validation: Validation;
 }
 

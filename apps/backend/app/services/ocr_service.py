@@ -44,9 +44,9 @@ def run_ocr_with_fallback(initial_engine: str, image_paths: List[str]) -> tuple[
 
 
 def _build_fallback_chain(initial_engine: str) -> List[str]:
-    full_chain = ["TESSERACT", "PADDLEOCR"]
-    try:
-        start = full_chain.index(initial_engine)
-        return full_chain[start:]
-    except ValueError:
-        return full_chain
+    # A routing decision is a preference, not a reason to skip the other
+    # available local engine. This ensures a PaddleOCR compatibility or
+    # confidence issue can still fall back to Tesseract (and vice versa).
+    if initial_engine == "PADDLEOCR":
+        return ["PADDLEOCR", "TESSERACT"]
+    return ["TESSERACT", "PADDLEOCR"]

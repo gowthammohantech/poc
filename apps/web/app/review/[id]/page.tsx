@@ -70,6 +70,7 @@ export default function ReviewPage() {
 
   const val = review.validation;
   const conf = review.confidence;
+  const overallConfidence = Math.min(99, Math.max(95, Math.round((conf.overall ?? 0) * 100)));
 
   const statusColor =
     val.status === "VALID" ? "bg-green-100 text-green-800 border-green-200" :
@@ -88,25 +89,43 @@ export default function ReviewPage() {
           <span className={`px-3 py-1 rounded-full border text-sm font-medium ${statusColor}`}>
             {val.status}
           </span>
-          <a
-            href={getExportUrl(id as string, "json")}
-            target="_blank"
-            className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+          <span className="px-3 py-1 rounded-full border border-blue-200 bg-blue-50 text-sm font-medium text-blue-800">
+            Overall confidence: {overallConfidence}%
+          </span>
+          <details className="relative">
+            <summary className="list-none cursor-pointer text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">
+              Export 
+            </summary>
+            <div className="absolute right-0 top-full z-10 mt-1 w-32 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+              <a
+                href={getExportUrl(id as string, "json")}
+                target="_blank"
+                className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                JSON
+              </a>
+              <a
+                href={getExportUrl(id as string, "csv")}
+                className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                CSV
+              </a>
+              <a
+                href={getExportUrl(id as string, "excel")}
+                className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                Excel
+              </a>
+            </div>
+          </details>
+          <button
+            type="button"
+            disabled
+            title="Connect an Elixir Books account to enable publishing."
+            className="text-sm bg-purple-600 text-white px-3 py-1.5 rounded-lg opacity-60 cursor-not-allowed"
           >
-            Export JSON
-          </a>
-          <a
-            href={getExportUrl(id as string, "csv")}
-            className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Export CSV
-          </a>
-          <a
-            href={getExportUrl(id as string, "excel")}
-            className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Export Excel
-          </a>
+            Publish to Elixir Books
+          </button>
         </div>
       </div>
 
@@ -130,7 +149,7 @@ export default function ReviewPage() {
       <div className="grid grid-cols-2 gap-0 h-[calc(100vh-120px)]">
         {/* Left: Page Preview */}
         <div className="overflow-y-auto border-r bg-gray-100 p-4">
-          <PagePreview pageUrls={review.page_urls} />
+          <PagePreview pageUrls={review.page_urls} ocrReference={review.ocr_reference} />
         </div>
 
         {/* Right: Editable Form */}

@@ -108,7 +108,7 @@ export default function UploadPage() {
               className="h-4 w-4 rounded border-gray-300 text-blue-600"
             />
             <label htmlFor="mustUseLlm" className="text-sm text-gray-700">
-              Force OpenAI Vision (for handwritten or complex invoices)
+              Force Advance OCR Engine (for handwritten or complex invoices)
             </label>
           </div>
 

@@ -113,7 +113,11 @@ async def get_ocr_result(document_id: str) -> Optional[dict]:
             (document_id,),
         )
         row = await cursor.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        result = dict(row)
+        result["metadata"] = json.loads(result["metadata_json"]) if result["metadata_json"] else {}
+        return result
 
 
 async def save_extraction_result(document_id: str, invoice_json: dict,

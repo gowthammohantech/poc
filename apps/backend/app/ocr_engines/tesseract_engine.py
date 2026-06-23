@@ -15,6 +15,7 @@ os.environ.setdefault("TESSDATA_PREFIX", TESSDATA_PREFIX)
 def run_tesseract(image_paths: List[str]) -> Dict[str, Any]:
     all_text_parts = []
     all_confidences = []
+    page_references = []
     word_count = 0
 
     for path in image_paths:
@@ -30,8 +31,26 @@ def run_tesseract(image_paths: List[str]) -> Dict[str, Any]:
             all_text_parts.append(page_text)
             all_confidences.extend(confs)
             word_count += len(words)
+            boxes = []
+            for i, (word, confidence) in enumerate(zip(data["text"], data["conf"])):
+                if not word.strip() or float(confidence) <= 0:
+                    continue
+                boxes.append({
+                    "text": word,
+                    "x": int(data["left"][i]),
+                    "y": int(data["top"][i]),
+                    "width": int(data["width"][i]),
+                    "height": int(data["height"][i]),
+                    "confidence": float(confidence),
+                })
+            page_references.append({
+                "width": img.width,
+                "height": img.height,
+                "boxes": boxes,
+            })
         except Exception as e:
             all_text_parts.append("")
+            page_references.append({"width": img.width, "height": img.height, "boxes": []})
 
     combined_text = "\n\n--- PAGE BREAK ---\n\n".join(all_text_parts)
     avg_confidence = float(sum(all_confidences) / len(all_confidences)) if all_confidences else 0.0
@@ -45,5 +64,6 @@ def run_tesseract(image_paths: List[str]) -> Dict[str, Any]:
             "engine": "TESSERACT",
             "pages_processed": len(image_paths),
             "avg_word_confidence": avg_confidence,
+            "page_references": page_references,
         },
     }
