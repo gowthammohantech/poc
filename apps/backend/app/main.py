@@ -13,7 +13,6 @@ from app.api.export_routes import router as export_router
 
 STORAGE_DIR = Path(os.getenv("STORAGE_BASE", "storage/uploads")).parent
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-Path("storage/uploads").mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -44,8 +43,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded files
-app.mount("/storage", StaticFiles(directory="storage"), name="storage")
+# Serve uploaded files from the same configurable location used by the upload
+# service. In production STORAGE_BASE is /app/data/storage/uploads, so mounting
+# the relative ./storage directory would otherwise return 404 for every page.
+app.mount("/storage", StaticFiles(directory=str(STORAGE_DIR)), name="storage")
 
 app.include_router(upload_router, prefix="/api/documents", tags=["Upload"])
 app.include_router(document_router, prefix="/api/documents", tags=["Documents"])
