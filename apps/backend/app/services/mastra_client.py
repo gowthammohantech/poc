@@ -83,10 +83,8 @@ def _fallback_route(payload: dict) -> dict:
     if payload.get("must_use_llm"):
         return {"engine": "OPENAI_VISION_LLM", "reason": "must_use_llm flag set"}
     score = payload.get("complexity_score", 50)
-    if score <= 40:
-        return {"engine": "TESSERACT", "reason": "low complexity"}
-    elif score <= 75:
-        return {"engine": "PADDLEOCR", "reason": "medium complexity"}
+    if score <= 60:
+        return {"engine": "TESSERACT", "reason": "low/medium complexity"}
     else:
         return {"engine": "OPENAI_VISION_LLM", "reason": "high complexity"}
 
