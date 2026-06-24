@@ -47,15 +47,6 @@ export default function InvoiceOcrPage() {
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="mb-6">
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Agent Hub
-          </Link>
-        </div>
-
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900">Invoice OCR Platform</h1>
           <p className="mt-2 text-gray-600">

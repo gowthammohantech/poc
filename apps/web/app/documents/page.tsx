@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getDocuments } from "@/lib/api";
 import type { Document } from "@/types/invoice";
 
@@ -26,9 +27,9 @@ export default function DocumentsPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Processed Invoices</h1>
-          <a href="/agents/invoice-ocr" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+          <Link href="/agents/invoice-ocr" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
             + Upload New
-          </a>
+          </Link>
         </div>
 
         {loading ? (
@@ -36,7 +37,7 @@ export default function DocumentsPage() {
         ) : docs.length === 0 ? (
           <div className="bg-white rounded-xl border p-12 text-center">
             <p className="text-gray-500">No invoices processed yet.</p>
-            <a href="/agents/invoice-ocr" className="mt-4 inline-block text-blue-600 hover:underline">Upload your first invoice →</a>
+            <Link href="/agents/invoice-ocr" className="mt-4 inline-block text-blue-600 hover:underline">Upload your first invoice →</Link>
           </div>
         ) : (
           <div className="bg-white rounded-xl border overflow-hidden">
