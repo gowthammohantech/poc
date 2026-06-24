@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
+// Keep browser requests on the frontend origin. The Next.js route handler proxies
+// them to FastAPI using the server-only FASTAPI_URL environment variable.
+const FASTAPI_URL = "/api/backend";
 
 export const api = axios.create({
   baseURL: FASTAPI_URL,
