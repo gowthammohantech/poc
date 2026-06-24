@@ -4,6 +4,10 @@ import { invoiceExtractionAgent } from "./agents/invoiceExtractionAgent.js";
 import { directVisionInvoiceAgent } from "./agents/directVisionInvoiceAgent.js";
 import { invoiceValidationAgent } from "./agents/invoiceValidationAgent.js";
 import { invoiceProcessingWorkflow } from "./workflows/invoiceProcessingWorkflow.js";
+import { brsDirectVisionAgent } from "./agents/brsDirectVisionAgent.js";
+import { brsExtractionAgent } from "./agents/brsExtractionAgent.js";
+import { brsValidationAgent } from "./agents/brsValidationAgent.js";
+import { brsProcessingWorkflow } from "./workflows/brsProcessingWorkflow.js";
 
 export const mastra = new Mastra({
   agents: {
@@ -11,8 +15,12 @@ export const mastra = new Mastra({
     invoiceExtractionAgent,
     directVisionInvoiceAgent,
     invoiceValidationAgent,
+    brsDirectVisionAgent,
+    brsExtractionAgent,
+    brsValidationAgent,
   },
   workflows: {
     invoiceProcessingWorkflow,
+    brsProcessingWorkflow,
   },
 });

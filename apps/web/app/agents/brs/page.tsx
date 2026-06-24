@@ -3,15 +3,13 @@
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { uploadInvoice, processDocument } from "@/lib/api";
+import { uploadBrs, processBrsDocument } from "@/lib/api";
 
-export default function InvoiceOcrPage() {
+export default function BrsPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [expectedFields, setExpectedFields] = useState("");
-  const [mustUseLlm, setMustUseLlm] = useState(false);
   const [status, setStatus] = useState<"idle" | "uploading" | "processing" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -27,16 +25,14 @@ export default function InvoiceOcrPage() {
     if (!file) return;
     try {
       setStatus("uploading");
-      setMessage("Uploading and converting document...");
-      const uploadResult = await uploadInvoice(file, expectedFields || undefined, mustUseLlm);
+      setMessage("Uploading and converting BRS document...");
+      const uploadResult = await uploadBrs(file);
       const id = uploadResult.document_id;
       setStatus("processing");
-      setMessage(
-        `Converted (${uploadResult.page_count} page(s), complexity: ${uploadResult.complexity_level}). Running OCR and extraction...`
-      );
-      await processDocument(id);
-      setMessage("Processing complete! Redirecting to review...");
-      router.push(`/review/${id}`);
+      setMessage(`Converted (${uploadResult.page_count} page(s)). Running vision extraction...`);
+      await processBrsDocument(id);
+      setMessage("Extraction complete! Redirecting to review...");
+      router.push(`/brs-review/${id}`);
     } catch (err: unknown) {
       setStatus("error");
       const msg = err instanceof Error ? err.message : "An error occurred";
@@ -48,9 +44,10 @@ export default function InvoiceOcrPage() {
     <main className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Invoice OCR Agent</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Bank Reconciliation Statement Agent</h1>
           <p className="mt-2 text-gray-600">
-            Upload an invoice PDF or image to extract structured data automatically.
+            Upload a BRS document (PDF or image). The agent will extract all balances and
+            reconciling items and validate the math automatically.
           </p>
         </div>
 
@@ -61,7 +58,7 @@ export default function InvoiceOcrPage() {
             onDrop={onDrop}
             onClick={() => fileRef.current?.click()}
             className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
-              dragging ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-blue-400"
+              dragging ? "border-emerald-500 bg-emerald-50" : "border-gray-300 hover:border-emerald-400"
             }`}
           >
             <input
@@ -78,39 +75,10 @@ export default function InvoiceOcrPage() {
               </div>
             ) : (
               <div>
-                <p className="text-gray-500">Drag & drop your invoice here, or click to browse</p>
+                <p className="text-gray-500">Drag & drop your BRS document here, or click to browse</p>
                 <p className="text-sm text-gray-400 mt-2">PDF, JPG, PNG, WEBP, TIFF, BMP, HEIC, HEIF</p>
               </div>
             )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Expected Fields (optional)
-            </label>
-            <textarea
-              rows={3}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., vendor name: Acme Corp, invoice number: INV-2024-001"
-              value={expectedFields}
-              onChange={(e) => setExpectedFields(e.target.value)}
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Provide known field values to improve accuracy validation.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="mustUseLlm"
-              checked={mustUseLlm}
-              onChange={(e) => setMustUseLlm(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600"
-            />
-            <label htmlFor="mustUseLlm" className="text-sm text-gray-700">
-              Force Advance OCR Engine (for handwritten or complex invoices)
-            </label>
           </div>
 
           {message && (
@@ -118,7 +86,7 @@ export default function InvoiceOcrPage() {
               className={`rounded-lg p-3 text-sm ${
                 status === "error"
                   ? "bg-red-50 text-red-700 border border-red-200"
-                  : "bg-blue-50 text-blue-700 border border-blue-200"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
               }`}
             >
               {(status === "processing" || status === "uploading") ? (
@@ -136,9 +104,9 @@ export default function InvoiceOcrPage() {
           <button
             type="submit"
             disabled={!file || status === "uploading" || status === "processing"}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
           >
-            {status === "uploading" || status === "processing" ? "Processing..." : "Upload & Process Invoice"}
+            {status === "uploading" || status === "processing" ? "Processing..." : "Upload & Extract BRS"}
           </button>
         </form>
 
@@ -148,22 +116,21 @@ export default function InvoiceOcrPage() {
           <div className="relative">
             <div className="flex flex-col sm:flex-row gap-0 sm:gap-0">
               {[
-                { step: 1, title: "Upload & Convert", desc: "PDF or image converted to page images" },
-                { step: 2, title: "Complexity Analysis", desc: "Document scored to select OCR engine" },
-                { step: 3, title: "OCR Extraction", desc: "Tesseract (simple) or Vision LLM (complex)" },
-                { step: 4, title: "Field Extraction", desc: "Agent parses vendor, dates, line items, totals" },
-                { step: 5, title: "Validation", desc: "Fields cross-checked against expected values" },
-                { step: 6, title: "Human Review", desc: "Reviewer confirms and exports results | publish to elixir books" },
+                { step: 1, title: "Upload & Convert", desc: "Document converted to page images" },
+                { step: 2, title: "Vision Extraction", desc: "Vision LLM reads the full document" },
+                { step: 3, title: "Balance Extraction", desc: "Book balance, bank balance & reconciling items identified" },
+                { step: 4, title: "Math Validation", desc: "Adjusted balances verified to reconcile" },
+                { step: 5, title: "Review & Export", desc: "Reviewer inspects and exports results" },
               ].map((item, idx, arr) => (
                 <div key={item.step} className="flex sm:flex-col items-start sm:items-center sm:flex-1 relative">
                   <div className="flex sm:flex-col items-center sm:w-full">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center z-10">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center z-10">
                       {item.step}
                     </div>
                     {idx < arr.length - 1 && (
                       <>
-                        <div className="sm:hidden w-px h-4 bg-blue-200 ml-3.5 my-0.5" />
-                        <div className="hidden sm:block h-px flex-1 bg-blue-200 mt-[-16px] mx-1 w-full" />
+                        <div className="sm:hidden w-px h-4 bg-emerald-200 ml-3.5 my-0.5" />
+                        <div className="hidden sm:block h-px flex-1 bg-emerald-200 mt-[-16px] mx-1 w-full" />
                       </>
                     )}
                   </div>
@@ -183,19 +150,19 @@ export default function InvoiceOcrPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               {
-                icon: "🔀",
-                name: "OCR Engine Selector",
-                desc: "Routes documents to Tesseract or Vision LLM based on complexity score",
+                icon: "👁️",
+                name: "BRS Vision Agent",
+                desc: "Uses direct vision LLM to read the full document without OCR preprocessing",
               },
               {
                 icon: "🤖",
                 name: "Extraction Agent",
-                desc: "LLM-powered agent that structures raw OCR text into typed invoice fields",
+                desc: "Pulls out all balance figures and reconciling line items with amounts",
               },
               {
-                icon: "✅",
+                icon: "🔢",
                 name: "Validation Agent",
-                desc: "Compares extracted data against expected fields and computes confidence scores",
+                desc: "Runs arithmetic checks and flags any reconciliation discrepancies",
               },
             ].map((agent) => (
               <div key={agent.name} className="bg-white border border-gray-200 rounded-xl p-4 flex gap-3 shadow-sm">
@@ -210,8 +177,8 @@ export default function InvoiceOcrPage() {
         </div>
 
         <div className="mt-6 text-center">
-          <Link href="/documents" className="text-sm text-blue-600 hover:underline">
-            View all processed invoices →
+          <Link href="/brs-documents" className="text-sm text-emerald-600 hover:underline">
+            View all processed BRS documents →
           </Link>
         </div>
       </div>

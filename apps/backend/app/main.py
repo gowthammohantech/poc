@@ -10,6 +10,10 @@ from app.api.upload_routes import router as upload_router
 from app.api.document_routes import router as document_router
 from app.api.review_routes import router as review_router
 from app.api.export_routes import router as export_router
+from app.api.brs_upload_routes import router as brs_upload_router
+from app.api.brs_document_routes import router as brs_document_router
+from app.api.brs_review_routes import router as brs_review_router
+from app.api.brs_export_routes import router as brs_export_router
 
 STORAGE_DIR = Path(os.getenv("STORAGE_BASE", "storage/uploads")).parent
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -52,6 +56,11 @@ app.include_router(upload_router, prefix="/api/documents", tags=["Upload"])
 app.include_router(document_router, prefix="/api/documents", tags=["Documents"])
 app.include_router(review_router, prefix="/api/documents", tags=["Review"])
 app.include_router(export_router, prefix="/api/documents", tags=["Export"])
+
+app.include_router(brs_upload_router, prefix="/api/brs", tags=["BRS Upload"])
+app.include_router(brs_document_router, prefix="/api/brs", tags=["BRS Documents"])
+app.include_router(brs_review_router, prefix="/api/brs", tags=["BRS Review"])
+app.include_router(brs_export_router, prefix="/api/brs", tags=["BRS Export"])
 
 
 @app.get("/api/health")

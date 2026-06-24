@@ -31,7 +31,7 @@ const AGENTS: Agent[] = [
     name: "Bank Reconciliation Agent",
     description:
       "Processes bank statements end-to-end: extracts transactions via OCR, parses them with an LLM, and runs 5 balance reconciliation checks.",
-    href: "#",
+    href: "/agents/brs",
     icon: Landmark,
     color: "from-emerald-500 to-teal-600",
     badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",

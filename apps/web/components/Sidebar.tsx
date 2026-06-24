@@ -3,12 +3,36 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Upload, FileText, LogOut, ChevronLeft, Bot } from "lucide-react";
+import { Upload, FileText, LogOut, ChevronLeft, Bot } from "lucide-react";
 
-const NAV_ITEMS = [
+const INVOICE_NAV_ITEMS = [
   { href: "/agents/invoice-ocr", label: "Process Invoice", icon: Upload },
   { href: "/documents", label: "Documents", icon: FileText },
 ];
+
+const BRS_NAV_ITEMS = [
+  { href: "/agents/brs", label: "Process BRS", icon: Upload },
+  { href: "/brs-documents", label: "BRS Documents", icon: FileText },
+];
+
+const AGENT_NAVIGATION = {
+  invoice: {
+    title: "Invoice OCR Agent",
+    iconContainerClass: "bg-violet-100",
+    iconClass: "text-violet-600",
+    activeClass: "bg-violet-50 text-violet-700 border border-violet-200",
+    activeIconClass: "text-violet-600",
+    items: INVOICE_NAV_ITEMS,
+  },
+  brs: {
+    title: "BRS Agent",
+    iconContainerClass: "bg-emerald-100",
+    iconClass: "text-emerald-600",
+    activeClass: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    activeIconClass: "text-emerald-600",
+    items: BRS_NAV_ITEMS,
+  },
+};
 
 function cn(...classes: (string | false | undefined)[]) {
   return classes.filter(Boolean).join(" ");
@@ -17,6 +41,12 @@ function cn(...classes: (string | false | undefined)[]) {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const activeAgent =
+    pathname.startsWith("/agents/brs") ||
+    pathname.startsWith("/brs-documents") ||
+    pathname.startsWith("/brs-review")
+      ? AGENT_NAVIGATION.brs
+      : AGENT_NAVIGATION.invoice;
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -51,19 +81,16 @@ export default function Sidebar() {
           All Agents
         </Link>
 
-        {/* Agent label */}
         <div className="flex items-center gap-2 px-3 mb-2">
-          <div className="w-5 h-5 rounded-md bg-violet-100 flex items-center justify-center flex-shrink-0">
-            <Bot className="w-3 h-3 text-violet-600" />
+          <div className={cn("w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0", activeAgent.iconContainerClass)}>
+            <Bot className={cn("w-3 h-3", activeAgent.iconClass)} />
           </div>
           <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 truncate">
-            Invoice OCR Agent
+            {activeAgent.title}
           </span>
         </div>
-
-        {/* Nav links */}
         <div className="ml-3 pl-3 border-l border-slate-100 space-y-0.5">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {activeAgent.items.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
@@ -72,16 +99,11 @@ export default function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
                   active
-                    ? "bg-violet-50 text-violet-700 border border-violet-200"
+                    ? activeAgent.activeClass
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 )}
               >
-                <Icon
-                  className={cn(
-                    "w-4 h-4",
-                    active ? "text-violet-600" : "text-slate-400"
-                  )}
-                />
+                <Icon className={cn("w-4 h-4", active ? activeAgent.activeIconClass : "text-slate-400")} />
                 {label}
               </Link>
             );

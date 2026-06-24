@@ -59,3 +59,40 @@ export function getPageImageUrl(pageUrl: string) {
   if (pageUrl.startsWith("http")) return pageUrl;
   return `${FASTAPI_URL}${pageUrl}`;
 }
+
+// ---- BRS Agent API ----
+
+export async function uploadBrs(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post("/api/brs/upload", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function processBrsDocument(documentId: string) {
+  const { data } = await api.post(`/api/brs/${documentId}/process`);
+  return data;
+}
+
+export async function getBrsReview(documentId: string) {
+  const { data } = await api.get(`/api/brs/${documentId}/review`);
+  return data;
+}
+
+export async function submitBrsReview(documentId: string, correctedBrs: object) {
+  const { data } = await api.post(`/api/brs/${documentId}/review/submit`, {
+    corrected_brs: correctedBrs,
+  });
+  return data;
+}
+
+export async function getBrsDocuments() {
+  const { data } = await api.get("/api/brs");
+  return data;
+}
+
+export function getBrsExportUrl(documentId: string, format: "json" | "csv" | "excel") {
+  return `${FASTAPI_URL}/api/brs/${documentId}/export/${format}`;
+}
