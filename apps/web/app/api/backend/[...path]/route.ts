@@ -24,13 +24,17 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const headers = new Headers(request.headers);
   HOP_BY_HOP_HEADERS.forEach((header) => headers.delete(header));
 
+  const hasRequestBody = request.method !== "GET" && request.method !== "HEAD";
   const upstream = await fetch(target, {
     method: request.method,
     headers,
-    body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+    // Forward uploads and other streaming request bodies without buffering them.
+    // Node's fetch implementation requires duplex mode for a ReadableStream body.
+    body: hasRequestBody ? request.body : undefined,
+    duplex: hasRequestBody ? "half" : undefined,
     cache: "no-store",
     redirect: "manual",
-  });
+  } as RequestInit);
 
   const responseHeaders = new Headers();
   ["cache-control", "content-disposition", "content-type"].forEach((header) => {
