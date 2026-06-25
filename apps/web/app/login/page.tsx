@@ -68,7 +68,7 @@ export default function LoginPage() {
             />
           </div>
           <p className="text-sm text-violet-600 font-semibold tracking-widest uppercase">
-            Agent Sandbox
+            Agent Marketplace Sandbox 
           </p>
           <p className="text-sm text-slate-500 mt-1">Powered by Elixir Global</p>
         </div>
