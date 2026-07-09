@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.74",
-    "ai": "^5.0.204",
+    "ai": "^7.0.18",
     "lucide-react": "^1.21.0"
   }
 }
