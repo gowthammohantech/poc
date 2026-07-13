@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
-import { getBrsReview, submitBrsReview, getBrsExportUrl } from "@/lib/api";
+import { getBrsReview, submitBrsReview, getBrsExportUrl, getBrsMatchReport, runBrsMatch } from "@/lib/api";
 import PagePreview from "@/components/PagePreview";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
 import type { BrsReviewData, BrsData, BrsItemType, BrsEffect, BrsReconciliationItem } from "@/types/brs";
+import type { MatchReport } from "@/types/ledger";
 
 const BRS_ITEM_TYPES: BrsItemType[] = [
   "DEPOSIT_IN_TRANSIT",
@@ -27,6 +28,8 @@ export default function BrsReviewPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState("");
+  const [matchReport, setMatchReport] = useState<MatchReport | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
 
   const { register, control, handleSubmit, reset } = useForm<BrsData>();
   const { fields: bankFields, append: appendBank, remove: removeBank } = useFieldArray({
@@ -47,7 +50,22 @@ export default function BrsReviewPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    getBrsMatchReport(id as string)
+      .then((data: MatchReport) => setMatchReport(data))
+      .catch(() => setMatchReport(null));
   }, [id, reset]);
+
+  const handleRerunMatch = async () => {
+    setMatchLoading(true);
+    try {
+      const data = await runBrsMatch(id as string);
+      setMatchReport(data);
+    } catch {
+      setSubmitMsg("Failed to run 2-way match.");
+    } finally {
+      setMatchLoading(false);
+    }
+  };
 
   const onSubmit = async (formData: BrsData) => {
     setSubmitting(true);
@@ -213,6 +231,22 @@ export default function BrsReviewPage() {
                 />
               </section>
             )}
+
+            {/* 2-Way Match against Dummy Ledger */}
+            <section className="bg-white rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between border-b pb-2">
+                <h2 className={sectionTitle}>2-Way Match (vs Ledger)</h2>
+                <button
+                  type="button"
+                  onClick={handleRerunMatch}
+                  disabled={matchLoading}
+                  className="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 px-2 py-1 rounded"
+                >
+                  {matchLoading ? "Matching..." : "Re-run Match"}
+                </button>
+              </div>
+              <MatchReportView report={matchReport} />
+            </section>
 
             {/* Bank Side Items */}
             <section className="bg-white rounded-lg border p-4 space-y-3">
@@ -432,6 +466,89 @@ function TransactionsView({
           <span className="font-semibold text-violet-900">{fmt(adjustedBook)}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MatchReportView({ report }: { report: MatchReport | null }) {
+  const fmt = (n: number | null | undefined) =>
+    n == null ? "—" : n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  if (!report) {
+    return (
+      <p className="text-xs text-gray-400 py-2">
+        No match results yet. Matching runs automatically after processing, or click &quot;Re-run Match&quot;.
+      </p>
+    );
+  }
+
+  const { summary, matched } = report;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <StatTile label="Matched" value={summary.matched} cls="bg-green-50 text-green-800" />
+        <StatTile label="Match Rate" value={`${summary.match_rate}%`} cls="bg-gray-50 text-gray-800" />
+      </div>
+
+      {matched.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-gray-600 uppercase mb-1">Matched</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b">
+                  <th className="text-left py-1.5 pr-3">Type</th>
+                  <th className="text-left py-1.5 pr-3">Bank Txn</th>
+                  <th className="text-left py-1.5 pr-3">Ledger Entry</th>
+                  <th className="text-right py-1.5 pr-2">Amount</th>
+                  <th className="text-right py-1.5">Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matched.map((m, i) => (
+                  <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="py-1.5 pr-3">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        m.match_type === "EXACT" ? "bg-green-50 text-green-700 border border-green-200" : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                      }`}>
+                        {m.match_type}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pr-3 text-gray-800 max-w-[180px] truncate" title={m.bank_transaction.description ?? ""}>
+                      {m.bank_transaction.date ?? "—"} · {m.bank_transaction.description ?? "—"}
+                    </td>
+                    <td
+                      className="py-1.5 pr-3 text-gray-800 max-w-[180px] truncate"
+                      title={[m.ledger_entry.ledger_name, m.ledger_entry.description].filter(Boolean).join(" · ")}
+                    >
+                      {m.ledger_entry.entry_date} · {m.ledger_entry.ledger_name ? `${m.ledger_entry.ledger_name} · ` : ""}
+                      {m.ledger_entry.description}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right font-medium text-gray-900">
+                      {fmt(m.bank_transaction.debit ?? m.bank_transaction.credit)}
+                    </td>
+                    <td className="py-1.5 text-right text-gray-600">{Math.round(m.confidence * 100)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {matched.length === 0 && (
+        <p className="text-xs text-gray-400 py-2">No matches found.</p>
+      )}
+    </div>
+  );
+}
+
+function StatTile({ label, value, cls }: { label: string; value: string | number; cls: string }) {
+  return (
+    <div className={`rounded-lg px-3 py-2 ${cls}`}>
+      <div className="text-[10px] uppercase tracking-wide opacity-80">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
     </div>
   );
 }

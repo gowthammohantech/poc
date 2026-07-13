@@ -24,14 +24,31 @@ OPENAI_API_KEY=sk-...
 
 HEIC/HEIF uploads require the Pillow HEIF decoder (install once in the backend virtual environment):
 
-```bash
+```powershell
 cd apps/backend
-.venv/bin/pip install pillow-heif
+.\.venv\Scripts\python -m pip install pillow-heif
 ```
 
-```bash
+If `.venv` points at a missing Python install, recreate it first:
+
+```powershell
+py -0p
+# If Python 3.12 is not listed, install Python 3.12 first.
 cd apps/backend
-.venv/bin/uvicorn app.main:app --reload --port 8000
+py -3.12 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python -m pip install pillow-heif
+```
+
+```powershell
+cd apps/backend
+.\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
+```
+
+From the repo root, you can also run:
+
+```powershell
+npm run dev:backend
 ```
 
 ### 3. Start Mastra service (Terminal 2)

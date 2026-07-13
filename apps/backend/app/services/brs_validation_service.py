@@ -1,7 +1,9 @@
 from typing import List, Dict, Any
 from dataclasses import dataclass
+from datetime import datetime, date
 
 MATH_TOLERANCE = 0.05
+_DATE_FORMATS = ["%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d"]
 
 BANK_SIDE_ITEM_TYPES = {"DEPOSIT_IN_TRANSIT", "OUTSTANDING_CHECK", "BANK_ERROR"}
 BOOK_SIDE_ITEM_TYPES = {"BANK_CHARGE", "BANK_INTEREST", "NSF_CHECK", "DIRECT_DEPOSIT", "BOOK_ERROR"}
@@ -26,6 +28,7 @@ def run_all_brs_rules(brs_output: Dict[str, Any]) -> List[BrsRuleCheck]:
     balances = brs.get("balances", {})
     bank_items = brs.get("bank_side_items", [])
     book_items = brs.get("book_side_items", [])
+    bank_transactions = brs.get("bank_transactions", [])
     adj_bank = brs.get("adjusted_bank_balance")
     adj_book = brs.get("adjusted_book_balance")
 
@@ -36,6 +39,7 @@ def run_all_brs_rules(brs_output: Dict[str, Any]) -> List[BrsRuleCheck]:
     checks.extend(_check_balances_reconcile(adj_bank, adj_book))
     checks.extend(_check_item_side_classification(bank_items, book_items))
     checks.extend(_check_amounts_non_negative(bank_items, book_items))
+    checks.extend(_check_bank_transactions(bank_transactions))
     return checks
 
 
@@ -170,6 +174,127 @@ def _check_amounts_non_negative(bank_items: list, book_items: list) -> List[BrsR
                     field=f"{side}_side_items"
                 ))
     return checks
+
+
+def _check_bank_transactions(transactions: list) -> List[BrsRuleCheck]:
+    checks: List[BrsRuleCheck] = []
+    if not transactions:
+        return [BrsRuleCheck(
+            rule="bank_transactions_present",
+            passed=False,
+            message="No bank transactions were extracted",
+            field="bank_transactions",
+        )]
+
+    checks.append(BrsRuleCheck(
+        rule="bank_transactions_present",
+        passed=True,
+        message=f"{len(transactions)} bank transaction(s) extracted",
+        field="bank_transactions",
+    ))
+
+    previous_balance = None
+    row_failures = 0
+
+    for index, txn in enumerate(transactions):
+        field = f"bank_transactions[{index}]"
+        debit = txn.get("debit")
+        credit = txn.get("credit")
+        balance = txn.get("balance")
+        debit_present = debit is not None and debit > 0
+        credit_present = credit is not None and credit > 0
+
+        if debit is not None and debit < 0:
+            row_failures += 1
+            checks.append(BrsRuleCheck(
+                rule="bank_transaction_amount_non_negative",
+                passed=False,
+                message=f"{field} has negative debit amount {debit}",
+                field=field,
+            ))
+        if credit is not None and credit < 0:
+            row_failures += 1
+            checks.append(BrsRuleCheck(
+                rule="bank_transaction_amount_non_negative",
+                passed=False,
+                message=f"{field} has negative credit amount {credit}",
+                field=field,
+            ))
+
+        if debit_present and credit_present:
+            row_failures += 1
+            checks.append(BrsRuleCheck(
+                rule="bank_transaction_single_side_amount",
+                passed=False,
+                message=f"{field} has both debit and credit populated",
+                field=field,
+            ))
+        elif not debit_present and not credit_present:
+            row_failures += 1
+            checks.append(BrsRuleCheck(
+                rule="bank_transaction_single_side_amount",
+                passed=False,
+                message=f"{field} has neither debit nor credit populated",
+                field=field,
+            ))
+
+        parsed_date = _parse_date(txn.get("date"))
+        if parsed_date is None:
+            row_failures += 1
+            checks.append(BrsRuleCheck(
+                rule="bank_transaction_date_parseable",
+                passed=False,
+                message=f"{field} has a missing or invalid transaction date",
+                field=field,
+            ))
+
+        if (
+            previous_balance is not None
+            and balance is not None
+            and debit_present != credit_present
+        ):
+            expected = previous_balance
+            if debit_present:
+                expected -= float(debit)
+            if credit_present:
+                expected += float(credit)
+            diff = abs(expected - float(balance))
+            if diff > MATH_TOLERANCE:
+                row_failures += 1
+                checks.append(BrsRuleCheck(
+                    rule="bank_transaction_running_balance",
+                    passed=False,
+                    message=(
+                        f"{field} running balance mismatch: expected {expected:.2f}, "
+                        f"found {float(balance):.2f}, diff = {diff:.4f}"
+                    ),
+                    field=field,
+                ))
+
+        if balance is not None:
+            previous_balance = float(balance)
+
+    if row_failures == 0:
+        checks.append(BrsRuleCheck(
+            rule="bank_transaction_rows_parseable",
+            passed=True,
+            message="All extracted bank transaction rows have parseable dates and one debit/credit amount",
+            field="bank_transactions",
+        ))
+
+    return checks
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value or not isinstance(value, str):
+        return None
+    value = value.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def determine_brs_validation_status(rule_checks: List[BrsRuleCheck], llm_checks: List[dict]) -> str:

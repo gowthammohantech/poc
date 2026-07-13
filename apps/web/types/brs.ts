@@ -47,11 +47,21 @@ export interface BrsReconciliationItem {
   affects_side: BrsAffectsSide;
 }
 
+export interface BrsBankTransaction {
+  date: string | null;
+  description: string | null;
+  reference_number: string | null;
+  debit: number | null;
+  credit: number | null;
+  balance: number | null;
+}
+
 export interface BrsData {
   document_info: BrsDocumentInfo;
   balances: BrsBalances;
   bank_side_items: BrsReconciliationItem[];
   book_side_items: BrsReconciliationItem[];
+  bank_transactions: BrsBankTransaction[];
   adjusted_bank_balance: number | null;
   adjusted_book_balance: number | null;
 }

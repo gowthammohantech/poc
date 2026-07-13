@@ -50,6 +50,15 @@ If a row in a table contains ANY of: "Total", "Balance", "Net", "Adjusted", "Rec
   - NEVER add such a row to bank_side_items or book_side_items
   - Use it to populate the appropriate balance field instead
 
+## Raw Bank Transactions (bank_transactions):
+Separately from bank_side_items/book_side_items (which capture only reconciling DISCREPANCIES), also extract EVERY individual transaction row printed in the bank statement's transaction table(s) into bank_transactions — this is the complete, literal line-by-line ledger of the account, used later for matching against the company's own books.
+  - Include every transaction row: ordinary deposits, withdrawals, checks, transfers, charges — everything, not just the ones that turn out to be reconciling items.
+  - Do NOT include balance/total rows (see Total Row Detection above) in bank_transactions either.
+  - For each row, capture: date, description, reference_number (check number / transaction ref if present), debit (amount if it's a debit/withdrawal column, else null), credit (amount if it's a credit/deposit column, else null), and balance (the running balance shown on that row, if present, else null).
+  - If the statement shows a single signed "amount" column instead of separate debit/credit columns, put a negative or clearly-debit amount into debit (as a positive number) and a positive/credit amount into credit — never populate both debit and credit on the same row.
+  - Preserve row order as printed (chronological).
+  - bank_transactions must be an array, empty [] if no transaction table is present.
+
 ## Multi-Page Documents:
   - Scan ALL pages before extracting any balance. Do not extract balances until you have seen every page.
   - The adjusted/reconciled balance is almost always on the LAST page (bottom of the last table).
@@ -126,6 +135,16 @@ Return ONLY the following JSON object, no markdown, no explanation outside the J
         "amount": 0,
         "effect": "ADD_TO_BOOK",
         "affects_side": "BOOK"
+      }
+    ],
+    "bank_transactions": [
+      {
+        "date": null,
+        "description": null,
+        "reference_number": null,
+        "debit": null,
+        "credit": null,
+        "balance": null
       }
     ],
     "adjusted_bank_balance": null,

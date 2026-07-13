@@ -4,6 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from app.db.database import init_db
 from app.api.upload_routes import router as upload_router
@@ -14,6 +17,7 @@ from app.api.brs_upload_routes import router as brs_upload_router
 from app.api.brs_document_routes import router as brs_document_router
 from app.api.brs_review_routes import router as brs_review_router
 from app.api.brs_export_routes import router as brs_export_router
+from app.api.ledger_routes import router as ledger_router
 
 STORAGE_DIR = Path(os.getenv("STORAGE_BASE", "storage/uploads")).parent
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,6 +65,8 @@ app.include_router(brs_upload_router, prefix="/api/brs", tags=["BRS Upload"])
 app.include_router(brs_document_router, prefix="/api/brs", tags=["BRS Documents"])
 app.include_router(brs_review_router, prefix="/api/brs", tags=["BRS Review"])
 app.include_router(brs_export_router, prefix="/api/brs", tags=["BRS Export"])
+
+app.include_router(ledger_router, prefix="/api/ledger", tags=["Ledger"])
 
 
 @app.get("/api/health")

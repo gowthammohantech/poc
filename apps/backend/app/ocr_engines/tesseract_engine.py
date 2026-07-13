@@ -7,6 +7,7 @@ import pandas as pd
 TESSERACT_CMD = os.getenv("TESSERACT_CMD", "/opt/homebrew/bin/tesseract")
 TESSDATA_PREFIX = os.getenv("TESSDATA_PREFIX", "/opt/homebrew/share/tessdata")
 CONFIDENCE_THRESHOLD = 60.0
+TESSERACT_CONFIG = "--psm 6 -c preserve_interword_spaces=1"
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 os.environ.setdefault("TESSDATA_PREFIX", TESSDATA_PREFIX)
@@ -22,12 +23,12 @@ def run_tesseract(image_paths: List[str]) -> Dict[str, Any]:
         img = Image.open(path)
         try:
             data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT,
-                                              lang="eng", config="--psm 6")
+                                              lang="eng", config=TESSERACT_CONFIG)
             words = [w for w, c in zip(data["text"], data["conf"])
-                     if w.strip() and int(c) > 0]
-            confs = [int(c) for w, c in zip(data["text"], data["conf"])
-                     if w.strip() and int(c) > 0]
-            page_text = pytesseract.image_to_string(img, lang="eng", config="--psm 6")
+                     if w.strip() and _to_confidence(c) > 0]
+            confs = [_to_confidence(c) for w, c in zip(data["text"], data["conf"])
+                     if w.strip() and _to_confidence(c) > 0]
+            page_text = pytesseract.image_to_string(img, lang="eng", config=TESSERACT_CONFIG)
             all_text_parts.append(page_text)
             all_confidences.extend(confs)
             word_count += len(words)
@@ -42,6 +43,9 @@ def run_tesseract(image_paths: List[str]) -> Dict[str, Any]:
                     "width": int(data["width"][i]),
                     "height": int(data["height"][i]),
                     "confidence": float(confidence),
+                    "block_num": int(data.get("block_num", [0])[i]),
+                    "line_num": int(data.get("line_num", [0])[i]),
+                    "word_num": int(data.get("word_num", [0])[i]),
                 })
             page_references.append({
                 "width": img.width,
@@ -67,3 +71,10 @@ def run_tesseract(image_paths: List[str]) -> Dict[str, Any]:
             "page_references": page_references,
         },
     }
+
+
+def _to_confidence(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return -1.0

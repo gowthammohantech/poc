@@ -51,11 +51,21 @@ export const BrsReconciliationItemSchema = z.object({
   affects_side: BrsAffectsSideSchema,
 });
 
+export const BrsBankTransactionSchema = z.object({
+  date: z.string().nullable(),
+  description: z.string().nullable(),
+  reference_number: z.string().nullable(),
+  debit: z.number().nullable(),
+  credit: z.number().nullable(),
+  balance: z.number().nullable(),
+});
+
 export const BrsDataSchema = z.object({
   document_info: BrsDocumentInfoSchema,
   balances: BrsBalanceSchema,
   bank_side_items: z.array(BrsReconciliationItemSchema),
   book_side_items: z.array(BrsReconciliationItemSchema),
+  bank_transactions: z.array(BrsBankTransactionSchema),
   adjusted_bank_balance: z.number().nullable(),
   adjusted_book_balance: z.number().nullable(),
 });

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Upload, FileText, LogOut, ChevronLeft, Bot } from "lucide-react";
+import { Upload, FileText, LogOut, ChevronLeft, Bot, BookOpen } from "lucide-react";
 
 const INVOICE_NAV_ITEMS = [
   { href: "/agents/invoice-ocr", label: "Process Invoice", icon: Upload },
@@ -13,6 +13,7 @@ const INVOICE_NAV_ITEMS = [
 const BRS_NAV_ITEMS = [
   { href: "/agents/brs", label: "Process BRS", icon: Upload },
   { href: "/brs-documents", label: "BRS Documents", icon: FileText },
+  { href: "/ledger", label: "Ledger", icon: BookOpen },
 ];
 
 const AGENT_NAVIGATION = {
@@ -44,7 +45,8 @@ export default function Sidebar() {
   const activeAgent =
     pathname.startsWith("/agents/brs") ||
     pathname.startsWith("/brs-documents") ||
-    pathname.startsWith("/brs-review")
+    pathname.startsWith("/brs-review") ||
+    pathname.startsWith("/ledger")
       ? AGENT_NAVIGATION.brs
       : AGENT_NAVIGATION.invoice;
 

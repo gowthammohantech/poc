@@ -10,6 +10,7 @@ export default function BrsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [mode, setMode] = useState<"HYBRID_OCR_VISION" | "TESSERACT_TABLE">("HYBRID_OCR_VISION");
   const [status, setStatus] = useState<"idle" | "uploading" | "processing" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -29,8 +30,8 @@ export default function BrsPage() {
       const uploadResult = await uploadBrs(file);
       const id = uploadResult.document_id;
       setStatus("processing");
-      setMessage(`Converted (${uploadResult.page_count} page(s)). Running vision extraction...`);
-      await processBrsDocument(id);
+      setMessage(`Converted (${uploadResult.page_count} page(s)). Running ${mode === "HYBRID_OCR_VISION" ? "Hybrid OCR + Vision" : "Tesseract Table"} extraction...`);
+      await processBrsDocument(id, mode);
       setMessage("Extraction complete! Redirecting to review...");
       router.push(`/brs-review/${id}`);
     } catch (err: unknown) {
@@ -51,7 +52,7 @@ export default function BrsPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
@@ -81,6 +82,62 @@ export default function BrsPage() {
             )}
           </div>
 
+          {/* Processing Mode Selection */}
+          <div className="space-y-3">
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-500 block">
+              OCR & Processing Mode
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMode("HYBRID_OCR_VISION")}
+                className={`flex flex-col text-left p-4 rounded-xl border transition-all cursor-pointer ${
+                  mode === "HYBRID_OCR_VISION"
+                    ? "border-emerald-600 bg-emerald-50/20 ring-1 ring-emerald-600"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-semibold text-sm text-gray-900">Hybrid OCR + Vision</span>
+                  <span className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                    mode === "HYBRID_OCR_VISION" ? "border-emerald-600 bg-emerald-600" : "border-gray-300"
+                  }`}>
+                    {mode === "HYBRID_OCR_VISION" && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                    )}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                  Extracts text via Tesseract OCR and passes it with images to GPT-4o Vision for intelligent parsing.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMode("TESSERACT_TABLE")}
+                className={`flex flex-col text-left p-4 rounded-xl border transition-all cursor-pointer ${
+                  mode === "TESSERACT_TABLE"
+                    ? "border-emerald-600 bg-emerald-50/20 ring-1 ring-emerald-600"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-semibold text-sm text-gray-900">Tesseract Table Only</span>
+                  <span className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                    mode === "TESSERACT_TABLE" ? "border-emerald-600 bg-emerald-600" : "border-gray-300"
+                  }`}>
+                    {mode === "TESSERACT_TABLE" && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                    )}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                  Performs local algorithmic table extraction solely based on word box coordinates. Fast & private.
+                </p>
+              </button>
+            </div>
+          </div>
+
           {message && (
             <div
               className={`rounded-lg p-3 text-sm ${
@@ -104,7 +161,7 @@ export default function BrsPage() {
           <button
             type="submit"
             disabled={!file || status === "uploading" || status === "processing"}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer"
           >
             {status === "uploading" || status === "processing" ? "Processing..." : "Upload & Extract BRS"}
           </button>

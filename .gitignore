@@ -11,3 +11,4 @@ dist/
 apps/backend/.venv/
 */storage/*
 */.mastra/*
+tmp/*

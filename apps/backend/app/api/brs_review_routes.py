@@ -19,7 +19,7 @@ async def get_brs_review(document_id: str):
 
     page_urls = []
     for p in pages:
-        path = p.get("preprocessed_path") or p.get("original_path") or ""
+        path = (p.get("preprocessed_path") or p.get("original_path") or "").replace("\\", "/")
         if "storage/uploads" in path:
             rel = path[path.index("storage/uploads"):]
             page_urls.append(f"/{rel}")

@@ -71,8 +71,10 @@ export async function uploadBrs(file: File) {
   return data;
 }
 
-export async function processBrsDocument(documentId: string) {
-  const { data } = await api.post(`/api/brs/${documentId}/process`);
+export async function processBrsDocument(documentId: string, processingMode?: string) {
+  const { data } = await api.post(`/api/brs/${documentId}/process`, null, {
+    params: { processing_mode: processingMode }
+  });
   return data;
 }
 
@@ -95,4 +97,36 @@ export async function getBrsDocuments() {
 
 export function getBrsExportUrl(documentId: string, format: "json" | "csv" | "excel") {
   return `${FASTAPI_URL}/api/brs/${documentId}/export/${format}`;
+}
+
+export async function runBrsMatch(documentId: string) {
+  const { data } = await api.post(`/api/brs/${documentId}/match`);
+  return data;
+}
+
+export async function getBrsMatchReport(documentId: string) {
+  const { data } = await api.get(`/api/brs/${documentId}/match`);
+  return data;
+}
+
+// ---- Dummy Ledger API ----
+
+export async function getLedgerEntries() {
+  const { data } = await api.get("/api/ledger");
+  return data;
+}
+
+export async function createLedgerEntry(entry: object) {
+  const { data } = await api.post("/api/ledger", entry);
+  return data;
+}
+
+export async function updateLedgerEntry(entryId: string, entry: object) {
+  const { data } = await api.put(`/api/ledger/${entryId}`, entry);
+  return data;
+}
+
+export async function deleteLedgerEntry(entryId: string) {
+  const { data } = await api.delete(`/api/ledger/${entryId}`);
+  return data;
 }

@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import List
 from PIL import Image
 
-POPPLER_PATH = os.getenv("POPPLER_PATH", "/opt/homebrew/bin")
+POPPLER_PATH = os.getenv("POPPLER_PATH") or None
+PDF_RENDER_DPI = int(os.getenv("PDF_RENDER_DPI", "300"))
 HEIF_EXTS = {".heic", ".heif"}
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp", *HEIF_EXTS}
 
@@ -23,7 +24,7 @@ def _pdf_to_pages(pdf_path: str, output_dir: Path) -> List[str]:
     from pdf2image import convert_from_path
     images = convert_from_path(
         pdf_path,
-        dpi=200,
+        dpi=PDF_RENDER_DPI,
         fmt="png",
         poppler_path=POPPLER_PATH,
     )

@@ -161,6 +161,32 @@ async def save_final_output(document_id: str, corrected_json: dict) -> str:
     return output_id
 
 
+async def save_match_result(document_id: str, match_json: dict) -> str:
+    result_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO brs_match_results (id, document_id, match_json, created_at) VALUES (?, ?, ?, ?)",
+            (result_id, document_id, json.dumps(match_json), now),
+        )
+        await db.commit()
+    return result_id
+
+
+async def get_match_result(document_id: str) -> Optional[dict]:
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM brs_match_results WHERE document_id = ? ORDER BY created_at DESC LIMIT 1",
+            (document_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        r = dict(row)
+        r["match_json"] = json.loads(r["match_json"]) if r["match_json"] else {}
+        return r
+
+
 async def get_final_output(document_id: str) -> Optional[dict]:
     async with get_db() as db:
         cursor = await db.execute(
