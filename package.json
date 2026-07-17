@@ -1,0 +1,23 @@
+{
+  "name": "invoice-ocr-platform",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "mastra-service"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:mastra": "npm run dev --workspace=mastra-service",
+    "dev:backend": "cd apps\\backend && python -m uvicorn app.main:app --reload --port 8000",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:mastra\" \"npm run dev:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.74",
+    "ai": "^5.0.204",
+    "lucide-react": "^1.21.0",
+    "venv": "^1.0.1"
+  }
+}
