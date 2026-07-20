@@ -8,7 +8,7 @@
   "scripts": {
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:mastra": "npm run dev --workspace=mastra-service",
-    "dev:backend": "cd apps\\backend && python -m uvicorn app.main:app --reload --port 8000",
+    "dev:backend": "cd apps\\backend && .venv\\Scripts\\activate && python -m uvicorn app.main:app --reload --port 8000",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:mastra\" \"npm run dev:web\""
   },
   "devDependencies": {
