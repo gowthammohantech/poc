@@ -3,7 +3,7 @@ FROM node:22-slim
 WORKDIR /app/apps/web
 
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm ci
 
 COPY . ./
 RUN npm run build

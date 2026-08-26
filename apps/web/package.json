@@ -8,9 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.1",
     "axios": "^1.18.1",
-    "lightningcss-win32-x64-msvc": "^1.32.0",
     "lucide-react": "^1.21.0",
     "next": "^16.2.10",
     "react": "19.2.4",
@@ -24,9 +22,5 @@
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
     "typescript": "^5"
-  },
-  "optionalDependencies": {
-    "@tailwindcss/oxide-linux-x64-gnu": "4.3.1",
-    "lightningcss-linux-x64-gnu": "1.32.0"
   }
 }
