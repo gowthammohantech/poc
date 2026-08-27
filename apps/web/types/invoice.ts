@@ -130,6 +130,12 @@ export interface InvoiceOutput {
 export interface ReviewData {
   document_id: string;
   status: string;
+  filename?: string | null;
+  complexity_score?: number | null;
+  complexity_level?: string | null;
+  ocr_engine?: string | null;
+  processing_mode?: string | null;
+  page_count?: number | null;
   page_urls: string[];
   invoice: InvoiceData;
   confidence: Confidence;

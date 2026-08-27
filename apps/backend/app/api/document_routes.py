@@ -10,9 +10,26 @@ from app.services.validation_service import run_all_rules, determine_validation_
 router = APIRouter()
 
 
+# Intermediate states the pipeline passes through; a row parked in one of these
+# is either still processing or was abandoned mid-run, so it is not listed.
+IN_PROGRESS_STATUSES = {"VALIDATING", "COMPLEXITY_ANALYZED"}
+
+
 @router.get("")
 async def list_documents():
-    return await docs.get_all_documents()
+    """List processed documents, newest run per filename only."""
+    rows = await docs.get_all_documents()  # already ordered created_at DESC
+    seen_filenames = set()
+    result = []
+    for row in rows:
+        if row.get("status") in IN_PROGRESS_STATUSES:
+            continue
+        filename = row.get("filename")
+        if filename in seen_filenames:
+            continue
+        seen_filenames.add(filename)
+        result.append(row)
+    return result
 
 
 @router.get("/{document_id}")

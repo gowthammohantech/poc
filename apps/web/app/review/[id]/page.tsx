@@ -77,6 +77,12 @@ export default function ReviewPage() {
     val.status === "INVALID" ? "bg-red-100 text-red-800 border-red-200" :
     "bg-yellow-100 text-yellow-800 border-yellow-200";
 
+  const complexityLevel = review.complexity_level || null;
+  const complexityColor =
+    complexityLevel === "LOW" ? "bg-emerald-50 text-emerald-800 border-emerald-200" :
+    complexityLevel === "HIGH" ? "bg-orange-50 text-orange-800 border-orange-200" :
+    "bg-amber-50 text-amber-800 border-amber-200";
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -89,6 +95,25 @@ export default function ReviewPage() {
           <span className={`px-3 py-1 rounded-full border text-sm font-medium ${statusColor}`}>
             {val.status}
           </span>
+          {complexityLevel && (
+            <span
+              className={`px-3 py-1 rounded-full border text-sm font-medium ${complexityColor}`}
+              title="Document complexity used to route the OCR engine"
+            >
+              {complexityLevel}
+              {review.complexity_score !== null && review.complexity_score !== undefined && (
+                <span className="opacity-60 ml-1">({review.complexity_score})</span>
+              )}
+            </span>
+          )}
+          {review.ocr_engine && (
+            <span
+              className="px-3 py-1 rounded-full border border-gray-200 bg-gray-50 text-xs font-mono text-gray-700"
+              title="OCR engine used for this document"
+            >
+              {review.ocr_engine}
+            </span>
+          )}
           {/* <span className="px-3 py-1 rounded-full border border-blue-200 bg-blue-50 text-sm font-medium text-blue-800">
             Overall confidence: {overallConfidence}%
           </span> */}

@@ -29,6 +29,14 @@ async def get_review(document_id: str):
     return {
         "document_id": document_id,
         "status": doc.get("status"),
+        "filename": doc.get("filename"),
+        "complexity_score": doc.get("complexity_score"),
+        "complexity_level": doc.get("complexity_level"),
+        # Fall back to the engine recorded on the OCR run when the document row
+        # was never stamped (older records).
+        "ocr_engine": doc.get("ocr_engine") or (ocr_result.get("engine") if ocr_result else None),
+        "processing_mode": doc.get("processing_mode"),
+        "page_count": doc.get("page_count") or len(pages),
         "page_urls": page_urls,
         # The extraction record is an envelope containing document metadata,
         # confidence, validation, and the actual form-ready invoice payload.
