@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS connector_sync_runs (
     documents_processed INTEGER DEFAULT 0,
     documents_failed INTEGER DEFAULT 0,
     skipped_duplicates INTEGER DEFAULT 0,
-    skipped_unsupported INTEGER DEFAULT 0,
+    skipped_unsupported INTEGER DEFAULT 0,   -- wrong file type, or over the size cap
+    skipped_inline INTEGER DEFAULT 0,        -- logos, signatures, images under the floor
     current_activity TEXT,
     error_message TEXT,
     started_at DATETIME DEFAULT CURRENT_TIMESTAMP,

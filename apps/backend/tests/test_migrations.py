@@ -58,22 +58,31 @@ async def test_creates_connector_tables(fresh_db):
     assert tables == {"connector_connections", "connector_sync_runs", "connector_sync_items"}
 
 
+# Every counter the runner is expected to add to an already-deployed
+# connector_sync_runs. Read from the declaration rather than listed here, so a
+# counter added later is covered by these cases without anyone remembering to.
+def _declared_run_counters() -> list[str]:
+    from app.db import database
+    return [name for name, _ddl in database._COLUMN_ADDITIONS["connector_sync_runs"]]
+
+
 @pytest.mark.asyncio
 async def test_creates_sync_run_counter_columns(fresh_db):
     await fresh_db.init_db()
     columns = await _columns(fresh_db.DB_PATH, "connector_sync_runs")
-    assert "messages_with_attachments" in columns
+    assert set(_declared_run_counters()) <= columns
 
 
+@pytest.mark.parametrize("column", _declared_run_counters())
 @pytest.mark.asyncio
-async def test_adds_the_counter_column_to_a_database_created_before_it(fresh_db):
+async def test_adds_the_counter_column_to_a_database_created_before_it(fresh_db, column):
     """CREATE TABLE IF NOT EXISTS leaves an existing table alone, so the column
     only reaches a deployed database through the guarded ALTER."""
     sql = (Path(fresh_db.__file__).parent / "connector_migrations.sql").read_text()
     async with aiosqlite.connect(fresh_db.DB_PATH) as db:
         without_column = [
             line for line in sql.splitlines(keepends=True)
-            if "messages_with_attachments" not in line
+            if column not in line
         ]
         await db.executescript("".join(without_column))
         await db.execute(
@@ -86,9 +95,9 @@ async def test_adds_the_counter_column_to_a_database_created_before_it(fresh_db)
     async with aiosqlite.connect(fresh_db.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT messages_with_attachments FROM connector_sync_runs WHERE id = 'run-1'"
+            f"SELECT {column} FROM connector_sync_runs WHERE id = 'run-1'"
         )
-        assert (await cursor.fetchone())["messages_with_attachments"] == 0
+        assert (await cursor.fetchone())[column] == 0
 
 
 @pytest.mark.asyncio

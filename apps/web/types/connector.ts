@@ -46,7 +46,10 @@ export interface ConnectorSyncRun {
   documents_processed: number;
   documents_failed: number;
   skipped_duplicates: number;
+  /** Wrong sort of file, or over the size cap. */
   skipped_unsupported: number;
+  /** Logos, signatures — images too small to be a document. */
+  skipped_inline: number;
   current_activity: string | null;
   error_message: string | null;
   started_at: string;
@@ -63,6 +66,7 @@ export interface ConnectorSyncTotals {
   documents_failed: number;
   skipped_duplicates: number;
   skipped_unsupported: number;
+  skipped_inline: number;
 }
 
 /** Where the invoices this connection produced have got to. */

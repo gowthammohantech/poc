@@ -608,7 +608,8 @@ function timeAgo(iso: string): string {
 
 function SyncProgress({ run }: { run: ConnectorSyncRun }) {
   const done =
-    run.documents_processed + run.documents_failed + run.skipped_duplicates + run.skipped_unsupported;
+    run.documents_processed + run.documents_failed +
+    run.skipped_duplicates + run.skipped_unsupported + run.skipped_inline;
   const total = Math.max(run.attachments_found, done);
   const pct = total ? Math.round((done / total) * 100) : 0;
 
@@ -636,7 +637,9 @@ function SyncProgress({ run }: { run: ConnectorSyncRun }) {
       {/* Only what the stat tiles above don't already say. */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
         {run.skipped_duplicates > 0 && <span>{run.skipped_duplicates} already seen</span>}
-        {run.skipped_unsupported > 0 && <span>{run.skipped_unsupported} not an invoice</span>}
+        {/* Nothing here looked inside a file — these were filtered on type and size. */}
+        {run.skipped_unsupported > 0 && <span>{run.skipped_unsupported} unsupported file(s)</span>}
+        {run.skipped_inline > 0 && <span>{run.skipped_inline} inline image(s)</span>}
         {run.documents_failed > 0 && <span className="text-red-600">{run.documents_failed} failed</span>}
       </div>
 

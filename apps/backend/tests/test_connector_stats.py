@@ -88,6 +88,19 @@ async def test_totals_sum_across_every_run(sync_service):
     assert stats["totals"]["documents_failed"] == 1
 
 
+async def test_skips_are_totalled_by_reason(sync_service):
+    """One number for every skip cannot say why anything was passed over, which
+    is how a filter bug hid: dropped invoices read as unsupported files."""
+    await _insert_run(skipped_unsupported=2, skipped_inline=3, skipped_duplicates=1)
+    await _insert_run(skipped_unsupported=1, skipped_inline=4)
+
+    totals = (await sync_service.get_connection_stats("conn-1"))["totals"]
+
+    assert totals["skipped_unsupported"] == 3
+    assert totals["skipped_inline"] == 7
+    assert totals["skipped_duplicates"] == 1
+
+
 async def test_last_run_is_the_most_recently_started(sync_service):
     await _insert_run(started_at="2026-01-01T00:00:00", messages_scanned=1)
     newest = await _insert_run(started_at="2026-03-01T00:00:00", messages_scanned=2)

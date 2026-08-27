@@ -209,15 +209,27 @@ def _is_inline(headers: list[dict]) -> bool:
 
     They are attachments as far as the API is concerned, so without this every
     sync would ingest a pile of 4KB PNGs as if they were invoices.
+
+    Content-Disposition decides it. A bare Content-ID does not: Gmail's own
+    composer stamps one (`<f_...>`, alongside X-Attachment-Id) on every file a
+    user attaches, so treating it as proof of inlining drops real invoices sent
+    from Gmail. It is only a hint, and only when nothing says otherwise.
     """
+    disposition = ""
+    has_content_id = False
     for header in headers:
         name = (header.get("name") or "").lower()
         value = (header.get("value") or "").lower()
-        if name == "content-id" and value:
-            return True
-        if name == "content-disposition" and value.startswith("inline"):
-            return True
-    return False
+        if name == "content-disposition":
+            disposition = value
+        elif name == "content-id" and value:
+            has_content_id = True
+
+    if disposition.startswith("attachment"):
+        return False
+    if disposition.startswith("inline"):
+        return True
+    return has_content_id
 
 
 def _header(headers: list[dict], name: str) -> str:

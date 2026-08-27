@@ -31,6 +31,15 @@ ITEM_SKIPPED_UNSUPPORTED = "SKIPPED_UNSUPPORTED"
 ITEM_SKIPPED_INLINE = "SKIPPED_INLINE"
 ITEM_FAILED = "FAILED"
 
+# Which run counter each skip reason lands in. Kept apart so the UI can say
+# *why* something was passed over: "wrong sort of file" and "an image too small
+# to be a document" are different answers, and reporting both as one number is
+# what let the inline heuristic drop invoices unnoticed.
+_SKIP_COUNTERS = {
+    ITEM_SKIPPED_UNSUPPORTED: "skipped_unsupported",
+    ITEM_SKIPPED_INLINE: "skipped_inline",
+}
+
 # asyncio discards tasks nothing holds a reference to, which would abandon a
 # sync partway through for no visible reason.
 _TASKS: dict[str, asyncio.Task] = {}
@@ -91,7 +100,7 @@ _IN_FLIGHT_DOCUMENT_STATUSES = (
 _TOTAL_COLUMNS = (
     "messages_scanned", "messages_with_attachments", "attachments_found",
     "documents_created", "documents_processed", "documents_failed",
-    "skipped_duplicates", "skipped_unsupported",
+    "skipped_duplicates", "skipped_unsupported", "skipped_inline",
 )
 
 
@@ -261,15 +270,22 @@ class SyncAlreadyRunning(ConnectorError):
 
 
 def _skip_reason(ref: MailAttachmentRef) -> Optional[str]:
-    if ref.is_inline:
-        return ITEM_SKIPPED_INLINE
+    """Why this attachment cannot be an invoice, or None to go and fetch it.
+
+    Order matters. What the file *is* comes first, because the inline rule
+    below is a heuristic and must not get to veto a document the sender clearly
+    attached on purpose: an inline flag only disqualifies the small images the
+    rule exists for, never a PDF.
+    """
     if Path(ref.filename).suffix.lower() not in ingest_service.ALLOWED_SUFFIXES:
+        return ITEM_SKIPPED_UNSUPPORTED
+    if ref.size_bytes and ref.size_bytes > _max_bytes():
         return ITEM_SKIPPED_UNSUPPORTED
     if ref.size_bytes and ref.size_bytes < _min_bytes():
         # Below this it is a logo or a signature image, not an invoice.
         return ITEM_SKIPPED_INLINE
-    if ref.size_bytes and ref.size_bytes > _max_bytes():
-        return ITEM_SKIPPED_UNSUPPORTED
+    if ref.is_inline and ref.mime_type.lower().startswith("image/"):
+        return ITEM_SKIPPED_INLINE
     return None
 
 
@@ -280,6 +296,7 @@ async def run_sync(run_id: str, connection_id: str):
         "documents_failed": 0,
         "skipped_duplicates": 0,
         "skipped_unsupported": 0,
+        "skipped_inline": 0,
     }
     try:
         connection = await connector_service.get_connection(connection_id)
@@ -308,7 +325,7 @@ async def run_sync(run_id: str, connection_id: str):
             skip = _skip_reason(ref)
             if skip:
                 await _record_item(run_id, connection_id, ref, skip)
-                counters["skipped_unsupported"] += 1
+                counters[_SKIP_COUNTERS[skip]] += 1
                 await _update_run(run_id, **counters)
                 continue
 

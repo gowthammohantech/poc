@@ -80,6 +80,34 @@ class TestWalkParts:
         _walk_parts(payload, found, [0])
         assert [f["filename"] for f in found] == ["invoice.pdf"]
 
+    def test_gmail_composer_attachment_is_not_inline(self):
+        """Gmail stamps a Content-ID on every file attached from its composer.
+
+        Regression: taking that as proof of inlining skipped real invoices —
+        the disposition says `attachment` and has the final word.
+        """
+        payload = _part(filename="5105844084.pdf", mime="application/pdf",
+                        attachment_id="att-1", size=72206, headers=[
+                            {"name": "Content-Type", "value": 'application/pdf; name="5105844084.pdf"'},
+                            {"name": "Content-Disposition", "value": 'attachment; filename="5105844084.pdf"'},
+                            {"name": "Content-ID", "value": "<f_mtbaf7js0>"},
+                            {"name": "X-Attachment-Id", "value": "f_mtbaf7js0"},
+                        ])
+        found: list[dict] = []
+        _walk_parts(payload, found, [0])
+        assert found[0]["is_inline"] is False
+
+    def test_disposition_beats_content_id_in_either_order(self):
+        for headers in (
+            [{"name": "Content-ID", "value": "<f_x>"},
+             {"name": "Content-Disposition", "value": "attachment; filename=a.pdf"}],
+            [{"name": "Content-Disposition", "value": "attachment; filename=a.pdf"},
+             {"name": "Content-ID", "value": "<f_x>"}],
+        ):
+            found: list[dict] = []
+            _walk_parts(_part(filename="a.pdf", attachment_id="att-1", headers=headers), found, [0])
+            assert found[0]["is_inline"] is False
+
     def test_flags_inline_images_by_content_id(self):
         payload = _part(mime="multipart/related", parts=[
             _part(filename="logo.png", mime="image/png", attachment_id="att-logo",

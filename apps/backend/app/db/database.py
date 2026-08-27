@@ -24,6 +24,7 @@ _COLUMN_ADDITIONS: dict[str, list[tuple[str, str]]] = {
     ],
     "connector_sync_runs": [
         ("messages_with_attachments", "INTEGER DEFAULT 0"),
+        ("skipped_inline", "INTEGER DEFAULT 0"),
     ],
 }
 
