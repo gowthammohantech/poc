@@ -24,7 +24,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const headers = new Headers(request.headers);
   HOP_BY_HOP_HEADERS.forEach((header) => headers.delete(header));
 
-  const hasRequestBody = request.method !== "GET" && request.method !== "HEAD";
+  const hasRequestBody =
+    request.method !== "GET" && request.method !== "HEAD" && request.method !== "DELETE";
   const upstream = await fetch(target, {
     method: request.method,
     headers,
@@ -50,3 +51,6 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 
 export const GET = proxy;
 export const POST = proxy;
+export const PUT = proxy;
+export const PATCH = proxy;
+export const DELETE = proxy;

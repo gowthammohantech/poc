@@ -62,6 +62,8 @@ pydantic_core==2.46.4
 Pygments==2.20.0
 pypdfium2==5.10.1
 pytesseract==0.3.13
+pytest-asyncio==1.4.0
+pytest==9.1.1
 python-bidi==0.6.10
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2

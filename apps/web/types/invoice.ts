@@ -153,6 +153,19 @@ export interface UploadResponse {
   message: string;
 }
 
+/** How a document entered the system. */
+export type IngestionSource = "MANUAL" | "API" | "CONNECTOR";
+
+/** Provenance recorded on connector-ingested documents. */
+export interface SourceMetadata {
+  provider?: string;
+  from?: string;
+  subject?: string;
+  received_at?: string;
+  thread_id?: string;
+  attachment_id?: string;
+}
+
 export interface Document {
   id: string;
   filename: string;
@@ -162,4 +175,9 @@ export interface Document {
   ocr_engine: string | null;
   page_count: number;
   created_at: string;
+  source: IngestionSource;
+  source_connector_id: string | null;
+  source_ref: string | null;
+  /** JSON-encoded SourceMetadata, or null for manual and API uploads. */
+  source_metadata: string | null;
 }

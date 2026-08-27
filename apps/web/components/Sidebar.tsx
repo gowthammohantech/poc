@@ -3,11 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Upload, FileText, LogOut, ChevronLeft, PanelLeftClose, Bot, ArrowLeftRight } from "lucide-react";
+import { Upload, FileText, LogOut, ChevronLeft, PanelLeftClose, Bot, ArrowLeftRight, Plug } from "lucide-react";
 
 const INVOICE_NAV_ITEMS = [
   { href: "/agents/invoice-ocr", label: "Process Invoice", icon: Upload },
   { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/connectors", label: "Connectors", icon: Plug },
 ];
 
 const BRS_NAV_ITEMS = [

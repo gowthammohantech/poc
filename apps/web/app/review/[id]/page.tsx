@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getReview, submitReview, getExportUrl, getDocuments } from "@/lib/api";
@@ -12,6 +12,9 @@ import type { ReviewData, InvoiceData, Document } from "@/types/invoice";
 export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  // The documents list passes its active source filter through, so the arrows
+  // walk exactly the rows the user was looking at rather than the full list.
+  const sourceFilter = useSearchParams().get("source");
   const [review, setReview] = useState<ReviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -41,9 +44,15 @@ export default function ReviewPage() {
   // arrows walk the list the user came from.
   useEffect(() => {
     getDocuments()
-      .then((data: Document[]) => setDocIds(data.map((d) => d.id)))
+      .then((data: Document[]) =>
+        setDocIds(
+          data
+            .filter((d) => !sourceFilter || (d.source ?? "MANUAL") === sourceFilter)
+            .map((d) => d.id)
+        )
+      )
       .catch(() => setDocIds([]));
-  }, []);
+  }, [sourceFilter]);
 
   const currentIndex = docIds.indexOf(id as string);
   const prevId = currentIndex > 0 ? docIds[currentIndex - 1] : null;
@@ -52,9 +61,11 @@ export default function ReviewPage() {
 
   const goTo = useCallback(
     (targetId: string | null) => {
-      if (targetId) router.push(`/review/${targetId}`);
+      if (!targetId) return;
+      const suffix = sourceFilter ? `?source=${sourceFilter}` : "";
+      router.push(`/review/${targetId}${suffix}`);
     },
-    [router]
+    [router, sourceFilter]
   );
 
   useEffect(() => {

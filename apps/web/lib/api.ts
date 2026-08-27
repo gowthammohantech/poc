@@ -128,3 +128,63 @@ export async function saveLedgerData(documentId: string, rows: unknown[]) {
   const { data } = await api.post(`/api/brs/matching/${documentId}/ledger`, { rows });
   return data;
 }
+
+// ---- Connectors ----
+
+export async function getConnectorProviders() {
+  const { data } = await api.get("/api/connectors/providers");
+  return data;
+}
+
+export async function getConnectors() {
+  const { data } = await api.get("/api/connectors");
+  return data;
+}
+
+export async function startConnectorOAuth(provider: string) {
+  const { data } = await api.post(`/api/connectors/${provider}/oauth/start`);
+  return data as { connection_id: string; authorization_url: string };
+}
+
+export async function getConnectorFolders(connectionId: string) {
+  const { data } = await api.get(`/api/connectors/${connectionId}/folders`);
+  return data;
+}
+
+export async function updateConnectorFilters(
+  connectionId: string,
+  filters: {
+    filter_label?: string | null;
+    filter_label_name?: string | null;
+    filter_query?: string | null;
+    max_messages_per_sync?: number | null;
+  }
+) {
+  const { data } = await api.post(`/api/connectors/${connectionId}/filters`, filters);
+  return data;
+}
+
+export async function disconnectConnector(connectionId: string) {
+  const { data } = await api.post(`/api/connectors/${connectionId}/disconnect`);
+  return data;
+}
+
+export async function startConnectorSync(connectionId: string) {
+  const { data } = await api.post(`/api/connectors/${connectionId}/sync`);
+  return data as { run_id: string; status: string };
+}
+
+export async function getSyncRun(runId: string) {
+  const { data } = await api.get(`/api/connectors/sync-runs/${runId}`);
+  return data;
+}
+
+export async function getSyncRunItems(runId: string) {
+  const { data } = await api.get(`/api/connectors/sync-runs/${runId}/items`);
+  return data;
+}
+
+export async function getConnectorSyncRuns(connectionId: string) {
+  const { data } = await api.get(`/api/connectors/${connectionId}/sync-runs`);
+  return data;
+}

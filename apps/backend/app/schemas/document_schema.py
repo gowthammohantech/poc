@@ -9,6 +9,12 @@ class DocumentCreate(BaseModel):
     mime_type: Optional[str] = None
     expected_fields: Optional[str] = None
     must_use_llm: bool = False
+    # How this document entered the system: MANUAL (uploaded by a person),
+    # API (posted by a script), or CONNECTOR (pulled from a mailbox).
+    source: str = "MANUAL"
+    source_connector_id: Optional[str] = None
+    source_ref: Optional[str] = None
+    source_metadata: Optional[str] = None
 
 
 class DocumentResponse(BaseModel):
@@ -17,6 +23,10 @@ class DocumentResponse(BaseModel):
     original_path: Optional[str]
     mime_type: Optional[str]
     status: str
+    source: str = "MANUAL"
+    source_connector_id: Optional[str] = None
+    source_ref: Optional[str] = None
+    source_metadata: Optional[str] = None
     complexity_score: Optional[float]
     complexity_level: Optional[str]
     complexity_reasons: Optional[str]

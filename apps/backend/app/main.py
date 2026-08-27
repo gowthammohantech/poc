@@ -1,9 +1,17 @@
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load apps/backend/.env before anything else is imported: the service modules
+# read their configuration into module-level constants at import time, so a
+# later call would leave every os.getenv default in place.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 from app.db.database import init_db
 from app.api.upload_routes import router as upload_router
@@ -15,6 +23,8 @@ from app.api.brs_document_routes import router as brs_document_router
 from app.api.brs_review_routes import router as brs_review_router
 from app.api.brs_export_routes import router as brs_export_router
 from app.api.brs_matching_routes import router as brs_matching_router
+from app.api.connector_routes import router as connector_router
+from app.services.connector_sync_service import reap_stale_runs
 
 STORAGE_DIR = Path(os.getenv("STORAGE_BASE", "storage/uploads")).parent
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -23,6 +33,9 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Sync runs live in this process, so anything still marked RUNNING was
+    # abandoned by a restart. Close them out or the UI waits forever.
+    await reap_stale_runs()
     yield
 
 
@@ -63,6 +76,8 @@ app.include_router(brs_document_router, prefix="/api/brs", tags=["BRS Documents"
 app.include_router(brs_review_router, prefix="/api/brs", tags=["BRS Review"])
 app.include_router(brs_export_router, prefix="/api/brs", tags=["BRS Export"])
 app.include_router(brs_matching_router, prefix="/api/brs", tags=["BRS Matching"])
+
+app.include_router(connector_router, prefix="/api/connectors", tags=["Connectors"])
 
 
 @app.get("/api/health")
