@@ -14,6 +14,7 @@ import {
   startConnectorSync,
   updateConnectorFilters,
 } from "@/lib/api";
+import { SkeletonBar } from "@/components/Skeleton";
 import type {
   ConnectorConnection,
   ConnectorProvider,
@@ -106,7 +107,7 @@ function ConnectorsPage() {
         )}
 
         {loading ? (
-          <p className="text-gray-500">Loading...</p>
+          <ConnectorsSkeleton />
         ) : (
           <div className="space-y-4">
             {providers.map((provider) => (
@@ -123,6 +124,31 @@ function ConnectorsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Mirrors the stack of provider cards so the page keeps its shape while the
+ * providers and connections load.
+ */
+function ConnectorsSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading connectors">
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-xl border p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <SkeletonBar className="w-9 h-9 rounded-lg flex-shrink-0" />
+              <div className="space-y-2 pt-0.5">
+                <SkeletonBar className="h-3.5 w-32" />
+                <SkeletonBar className="h-3 w-48" />
+              </div>
+            </div>
+            <SkeletonBar className="h-8 w-24 rounded-lg flex-shrink-0" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

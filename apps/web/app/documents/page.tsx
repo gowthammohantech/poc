@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getDocuments } from "@/lib/api";
 import SourceBadge from "@/components/SourceBadge";
+import { SkeletonTable } from "@/components/Skeleton";
 import type { Document, IngestionSource } from "@/types/invoice";
 
 type SourceFilter = "ALL" | IngestionSource;
@@ -96,7 +97,7 @@ function DocumentsPage() {
         </div>
 
         {loading ? (
-          <p className="text-gray-500">Loading...</p>
+          <SkeletonTable columns={8} rows={6} />
         ) : loadError ? (
           <div className="bg-white rounded-xl border p-12 text-center">
             <p className="text-red-600 text-sm">{loadError}</p>

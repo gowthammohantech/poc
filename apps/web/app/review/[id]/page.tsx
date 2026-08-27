@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getReview, submitReview, getExportUrl, getDocuments } from "@/lib/api";
 import PagePreview from "@/components/PagePreview";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
+import { SkeletonBar } from "@/components/Skeleton";
 import type { ReviewData, InvoiceData, Document } from "@/types/invoice";
 
 export default function ReviewPage() {
@@ -574,21 +575,17 @@ function Field({
  * the data lands.
  * ------------------------------------------------------------------------ */
 
-function Bar({ className = "" }: { className?: string }) {
-  return <div className={`shimmer rounded ${className}`} />;
-}
-
 function SkeletonSection({ rows, wide }: { rows: number; wide?: boolean }) {
   return (
     <section className="bg-white rounded-lg border p-4 space-y-3">
       <div className="border-b pb-2">
-        <Bar className="h-3.5 w-36" />
+        <SkeletonBar className="h-3.5 w-36" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         {Array.from({ length: rows }).map((_, i) => (
           <div key={i} className={wide && i === rows - 1 ? "col-span-2" : ""}>
-            <Bar className="h-2.5 w-20 mb-2" />
-            <Bar className="h-8 w-full" />
+            <SkeletonBar className="h-2.5 w-20 mb-2" />
+            <SkeletonBar className="h-8 w-full" />
           </div>
         ))}
       </div>
@@ -602,15 +599,15 @@ function ReviewSkeleton() {
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div className="space-y-2">
-          <Bar className="h-5 w-40" />
-          <Bar className="h-3 w-64" />
+          <SkeletonBar className="h-5 w-40" />
+          <SkeletonBar className="h-3 w-64" />
         </div>
         <div className="flex items-center gap-3">
-          <Bar className="h-7 w-24 rounded-full" />
-          <Bar className="h-7 w-20 rounded-full" />
-          <Bar className="h-7 w-28 rounded-full" />
-          <Bar className="h-8 w-20 rounded-lg" />
-          <Bar className="h-8 w-40 rounded-lg" />
+          <SkeletonBar className="h-7 w-24 rounded-full" />
+          <SkeletonBar className="h-7 w-20 rounded-full" />
+          <SkeletonBar className="h-7 w-28 rounded-full" />
+          <SkeletonBar className="h-8 w-20 rounded-lg" />
+          <SkeletonBar className="h-8 w-40 rounded-lg" />
         </div>
       </div>
 
@@ -619,10 +616,10 @@ function ReviewSkeleton() {
         {/* Left: page preview */}
         <div className="overflow-hidden border-r bg-gray-100 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <Bar className="h-3.5 w-24" />
-            <Bar className="h-7 w-32 rounded-lg" />
+            <SkeletonBar className="h-3.5 w-24" />
+            <SkeletonBar className="h-7 w-32 rounded-lg" />
           </div>
-          <Bar className="h-[calc(100vh-220px)] w-full rounded-lg" />
+          <SkeletonBar className="h-[calc(100vh-220px)] w-full rounded-lg" />
         </div>
 
         {/* Right: form */}
@@ -634,14 +631,14 @@ function ReviewSkeleton() {
           {/* Line items table */}
           <section className="bg-white rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between border-b pb-2">
-              <Bar className="h-3.5 w-28" />
-              <Bar className="h-6 w-20 rounded" />
+              <SkeletonBar className="h-3.5 w-28" />
+              <SkeletonBar className="h-6 w-20 rounded" />
             </div>
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="grid grid-cols-12 gap-1.5">
                   {Array.from({ length: 12 }).map((__, c) => (
-                    <Bar key={c} className="h-6 w-full" />
+                    <SkeletonBar key={c} className="h-6 w-full" />
                   ))}
                 </div>
               ))}
