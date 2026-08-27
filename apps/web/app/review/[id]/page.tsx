@@ -98,17 +98,7 @@ export default function ReviewPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <svg className="animate-spin h-8 w-8 mx-auto text-blue-600" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-          </svg>
-          <p className="mt-3 text-gray-600">Loading review data...</p>
-        </div>
-      </div>
-    );
+    return <ReviewSkeleton />;
   }
 
   if (!review) {
@@ -572,6 +562,93 @@ function Field({
       </label>
       {children}
       {isError && <p className="text-xs text-red-500 mt-0.5">Validation error</p>}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Loading state
+ *
+ * Mirrors the real review layout (header bar, page preview on the left, the
+ * stack of form sections on the right) so the page doesn't jump around once
+ * the data lands.
+ * ------------------------------------------------------------------------ */
+
+function Bar({ className = "" }: { className?: string }) {
+  return <div className={`shimmer rounded ${className}`} />;
+}
+
+function SkeletonSection({ rows, wide }: { rows: number; wide?: boolean }) {
+  return (
+    <section className="bg-white rounded-lg border p-4 space-y-3">
+      <div className="border-b pb-2">
+        <Bar className="h-3.5 w-36" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className={wide && i === rows - 1 ? "col-span-2" : ""}>
+            <Bar className="h-2.5 w-20 mb-2" />
+            <Bar className="h-8 w-full" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReviewSkeleton() {
+  return (
+    <div className="min-h-screen bg-gray-50" aria-busy="true" aria-label="Loading review data">
+      {/* Header */}
+      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
+        <div className="space-y-2">
+          <Bar className="h-5 w-40" />
+          <Bar className="h-3 w-64" />
+        </div>
+        <div className="flex items-center gap-3">
+          <Bar className="h-7 w-24 rounded-full" />
+          <Bar className="h-7 w-20 rounded-full" />
+          <Bar className="h-7 w-28 rounded-full" />
+          <Bar className="h-8 w-20 rounded-lg" />
+          <Bar className="h-8 w-40 rounded-lg" />
+        </div>
+      </div>
+
+      {/* Two-panel layout */}
+      <div className="grid grid-cols-2 gap-0 h-[calc(100vh-120px)]">
+        {/* Left: page preview */}
+        <div className="overflow-hidden border-r bg-gray-100 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <Bar className="h-3.5 w-24" />
+            <Bar className="h-7 w-32 rounded-lg" />
+          </div>
+          <Bar className="h-[calc(100vh-220px)] w-full rounded-lg" />
+        </div>
+
+        {/* Right: form */}
+        <div className="overflow-hidden p-6 space-y-6">
+          <SkeletonSection rows={5} />
+          <SkeletonSection rows={6} wide />
+          <SkeletonSection rows={3} wide />
+
+          {/* Line items table */}
+          <section className="bg-white rounded-lg border p-4 space-y-3">
+            <div className="flex items-center justify-between border-b pb-2">
+              <Bar className="h-3.5 w-28" />
+              <Bar className="h-6 w-20 rounded" />
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="grid grid-cols-12 gap-1.5">
+                  {Array.from({ length: 12 }).map((__, c) => (
+                    <Bar key={c} className="h-6 w-full" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

@@ -6,16 +6,18 @@ from app.services.processing_service import ProcessingError, run_processing_pipe
 router = APIRouter()
 
 
-# Intermediate states the pipeline passes through; a row parked in one of these
-# is either still processing or was abandoned mid-run, so it is not listed.
-IN_PROGRESS_STATUSES = {"VALIDATING", "COMPLEXITY_ANALYZED"}
+# Where the pipeline comes to rest. Anything else is a stage it passes through:
+# still running, or abandoned mid-run. Listing by the terminal set rather than
+# naming the intermediate ones means a new pipeline stage cannot leak into the
+# list by being forgotten here.
+TERMINAL_STATUSES = {"VALID", "INVALID", "NEEDS_REVIEW", "COMPLETED", "FAILED"}
 
 
 @router.get("")
 async def list_documents():
-    """List processed documents, newest first."""
+    """List documents the pipeline has finished with, newest first."""
     rows = await docs.get_all_documents()  # already ordered created_at DESC
-    return [row for row in rows if row.get("status") not in IN_PROGRESS_STATUSES]
+    return [row for row in rows if row.get("status") in TERMINAL_STATUSES]
 
 
 @router.get("/{document_id}")

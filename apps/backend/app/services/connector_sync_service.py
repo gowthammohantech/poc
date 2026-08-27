@@ -118,14 +118,36 @@ async def _record_item(run_id: str, connection_id: str, ref: MailAttachmentRef,
         await db.commit()
 
 
+# Stages a document can only be sitting in because its run was interrupted.
+# COMPLEXITY_ANALYZED is excluded: that is a legitimate rest between upload and
+# a separate /process call.
+_ABANDONED_DOCUMENT_STATUSES = (
+    "SAVING", "CONVERTING", "PREPROCESSING", "ANALYZING_COMPLEXITY",
+    "ROUTING", "ROUTED", "OCR_RUNNING", "EXTRACTING", "EXTRACTED", "VALIDATING",
+)
+
+
 async def reap_stale_runs():
-    """Fail any run left mid-flight by a restart, so the UI stops waiting on it."""
+    """Close out work abandoned by a restart.
+
+    Sync tasks live in this process, so on startup nothing is genuinely in
+    flight. Both the run and the document it was mid-way through have to be
+    settled: a document left at OCR_RUNNING is not FAILED, so the duplicate
+    check would treat it as already ingested and skip that attachment on every
+    future sync. Marking it FAILED lets the next sync retry it in place.
+    """
+    placeholders = ", ".join("?" for _ in _ABANDONED_DOCUMENT_STATUSES)
     async with get_db() as db:
         await db.execute(
             """UPDATE connector_sync_runs
                SET status = ?, error_message = ?, finished_at = ?
                WHERE status = ?""",
             (STATUS_FAILED, "Interrupted by a server restart", _now(), STATUS_RUNNING),
+        )
+        await db.execute(
+            f"""UPDATE documents SET status = 'FAILED', updated_at = ?
+                WHERE source = 'CONNECTOR' AND status IN ({placeholders})""",
+            (_now(), *_ABANDONED_DOCUMENT_STATUSES),
         )
         await db.commit()
 
