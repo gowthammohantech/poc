@@ -96,10 +96,10 @@ polling, since processing a mailbox takes minutes.
 
 ### Try it without a Google account
 
-Set `CONNECTOR_ENABLE_FAKE=1` in `apps/backend/.env` and a **Sample Mailbox**
-provider appears at `/connectors`, backed by the PDFs in `invoices/`. Connect it
-and press **Sync now** — this exercises the whole path, including the
-duplicate and unsupported-attachment skip rules.
+A **Sample Mailbox** provider is always listed at `/connectors` next to Gmail,
+backed by the PDFs in `invoices/`. Connect it and press **Sync now** — this
+exercises the whole path, including the duplicate and unsupported-attachment
+skip rules.
 
 ### Enabling Gmail
 

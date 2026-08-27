@@ -4,8 +4,6 @@ Adding a provider is one new module and one entry here; nothing in the sync
 orchestration, the API layer or the UI needs to know it exists.
 """
 
-import os
-
 from app.services.connectors.base import (
     ConnectorAuthError,
     ConnectorError,
@@ -29,12 +27,14 @@ __all__ = [
 ]
 
 _gmail = GmailConnector()
-_REGISTRY: dict[str, MailConnector] = {_gmail.provider: _gmail}
+_fake = FakeConnector()
 
-# Not a real mailbox; only offered when explicitly switched on for development.
-if os.getenv("CONNECTOR_ENABLE_FAKE") == "1":
-    _fake = FakeConnector()
-    _REGISTRY[_fake.provider] = _fake
+# The sample mailbox is always offered next to Gmail, so the connector path can
+# be walked end to end without Google credentials.
+_REGISTRY: dict[str, MailConnector] = {
+    _gmail.provider: _gmail,
+    _fake.provider: _fake,
+}
 
 # Listed so the UI can show it as coming soon before the adapter exists.
 _PLANNED = [{"provider": "OUTLOOK", "label": "Outlook", "configured": False, "enabled": False}]

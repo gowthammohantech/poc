@@ -2,7 +2,8 @@
 
 Synthesises messages from the sample invoices in the repo's invoices/ folder,
 including a duplicate and an unsupported file so the skip paths get walked too.
-Enabled with CONNECTOR_ENABLE_FAKE=1.
+Always listed alongside the real providers; it reports itself as unconfigured
+when the sample folder is missing.
 """
 
 import os
