@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
-import { getReview, submitReview, getExportUrl } from "@/lib/api";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getReview, submitReview, getExportUrl, getDocuments } from "@/lib/api";
 import PagePreview from "@/components/PagePreview";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
-import type { ReviewData, InvoiceData } from "@/types/invoice";
+import type { ReviewData, InvoiceData, Document } from "@/types/invoice";
 
 export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,6 +16,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState("");
+  const [docIds, setDocIds] = useState<string[]>([]);
 
   const { register, control, handleSubmit, reset } = useForm<InvoiceData>();
   const { fields: lineItemFields, append, remove } = useFieldArray({
@@ -24,6 +26,8 @@ export default function ReviewPage() {
 
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
+    setSubmitMsg("");
     getReview(id as string)
       .then((data) => {
         setReview(data);
@@ -33,11 +37,47 @@ export default function ReviewPage() {
       .catch(() => setLoading(false));
   }, [id, reset]);
 
+  // Sibling invoices, in the same order the documents list shows them, so the
+  // arrows walk the list the user came from.
+  useEffect(() => {
+    getDocuments()
+      .then((data: Document[]) => setDocIds(data.map((d) => d.id)))
+      .catch(() => setDocIds([]));
+  }, []);
+
+  const currentIndex = docIds.indexOf(id as string);
+  const prevId = currentIndex > 0 ? docIds[currentIndex - 1] : null;
+  const nextId =
+    currentIndex >= 0 && currentIndex < docIds.length - 1 ? docIds[currentIndex + 1] : null;
+
+  const goTo = useCallback(
+    (targetId: string | null) => {
+      if (targetId) router.push(`/review/${targetId}`);
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      // Don't hijack arrow keys while the user is editing a field.
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      e.preventDefault();
+      goTo(e.key === "ArrowLeft" ? prevId : nextId);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goTo, prevId, nextId]);
+
   const onSubmit = async (formData: InvoiceData) => {
     setSubmitting(true);
     setSubmitMsg("");
     try {
       await submitReview(id as string, formData);
+      setReview((r) => (r ? { ...r, status: "COMPLETED" } : r));
       setSubmitMsg("Review submitted successfully! Invoice is now locked.");
     } catch {
       setSubmitMsg("Failed to submit. Please try again.");
@@ -72,10 +112,15 @@ export default function ReviewPage() {
   const conf = review.confidence;
   const overallConfidence = Math.min(99, Math.max(95, Math.round((conf.overall ?? 0) * 100)));
 
+  // The document row carries the lifecycle status shown on the documents list
+  // (COMPLETED, INVALID, ...); validation.status is only the extraction-time
+  // verdict, so it is a fallback for older records.
+  const docStatus = review.status || val.status;
   const statusColor =
-    val.status === "VALID" ? "bg-green-100 text-green-800 border-green-200" :
-    val.status === "INVALID" ? "bg-red-100 text-red-800 border-red-200" :
-    "bg-yellow-100 text-yellow-800 border-yellow-200";
+    docStatus === "VALID" || docStatus === "COMPLETED" ? "bg-green-100 text-green-800 border-green-200" :
+    docStatus === "INVALID" || docStatus === "FAILED" ? "bg-red-100 text-red-800 border-red-200" :
+    docStatus === "NEEDS_REVIEW" ? "bg-yellow-100 text-yellow-800 border-yellow-200" :
+    "bg-gray-100 text-gray-700 border-gray-200";
 
   const complexityLevel = review.complexity_level || null;
   const complexityColor =
@@ -85,6 +130,20 @@ export default function ReviewPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Prev / next invoice (also bound to the ← / → keys) */}
+      <NavArrow
+        side="left"
+        disabled={!prevId}
+        onClick={() => goTo(prevId)}
+        label="Previous invoice (←)"
+      />
+      <NavArrow
+        side="right"
+        disabled={!nextId}
+        onClick={() => goTo(nextId)}
+        label="Next invoice (→)"
+      />
+
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div>
@@ -93,7 +152,7 @@ export default function ReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className={`px-3 py-1 rounded-full border text-sm font-medium ${statusColor}`}>
-            {val.status}
+            {docStatus}
           </span>
           {complexityLevel && (
             <span
@@ -450,6 +509,32 @@ export default function ReviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function NavArrow({
+  side,
+  disabled,
+  onClick,
+  label,
+}: {
+  side: "left" | "right";
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  const Icon = side === "left" ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`fixed ${side === "left" ? "left-2" : "right-2"} top-1/2 -translate-y-1/2 z-30 h-10 w-10 flex items-center justify-center rounded-full border border-gray-300 bg-white/90 text-gray-600 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white/90`}
+    >
+      <Icon className="w-5 h-5" />
+    </button>
   );
 }
 
