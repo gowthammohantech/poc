@@ -22,6 +22,9 @@ _COLUMN_ADDITIONS: dict[str, list[tuple[str, str]]] = {
         ("source_ref", "TEXT"),
         ("source_metadata", "TEXT"),
     ],
+    "connector_sync_runs": [
+        ("messages_with_attachments", "INTEGER DEFAULT 0"),
+    ],
 }
 
 # Run after the ALTERs: these reference columns that may not exist yet.

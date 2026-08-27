@@ -184,6 +184,11 @@ export async function getSyncRunItems(runId: string) {
   return data;
 }
 
+export async function getConnectorStats(connectionId: string) {
+  const { data } = await api.get(`/api/connectors/${connectionId}/stats`);
+  return data;
+}
+
 export async function getConnectorSyncRuns(connectionId: string) {
   const { data } = await api.get(`/api/connectors/${connectionId}/sync-runs`);
   return data;

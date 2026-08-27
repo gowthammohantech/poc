@@ -59,6 +59,39 @@ async def test_creates_connector_tables(fresh_db):
 
 
 @pytest.mark.asyncio
+async def test_creates_sync_run_counter_columns(fresh_db):
+    await fresh_db.init_db()
+    columns = await _columns(fresh_db.DB_PATH, "connector_sync_runs")
+    assert "messages_with_attachments" in columns
+
+
+@pytest.mark.asyncio
+async def test_adds_the_counter_column_to_a_database_created_before_it(fresh_db):
+    """CREATE TABLE IF NOT EXISTS leaves an existing table alone, so the column
+    only reaches a deployed database through the guarded ALTER."""
+    sql = (Path(fresh_db.__file__).parent / "connector_migrations.sql").read_text()
+    async with aiosqlite.connect(fresh_db.DB_PATH) as db:
+        without_column = [
+            line for line in sql.splitlines(keepends=True)
+            if "messages_with_attachments" not in line
+        ]
+        await db.executescript("".join(without_column))
+        await db.execute(
+            "INSERT INTO connector_sync_runs (id, connection_id) VALUES ('run-1', 'conn-1')"
+        )
+        await db.commit()
+
+    await fresh_db.init_db()
+
+    async with aiosqlite.connect(fresh_db.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT messages_with_attachments FROM connector_sync_runs WHERE id = 'run-1'"
+        )
+        assert (await cursor.fetchone())["messages_with_attachments"] == 0
+
+
+@pytest.mark.asyncio
 async def test_is_idempotent(fresh_db):
     await fresh_db.init_db()
     await fresh_db.init_db()

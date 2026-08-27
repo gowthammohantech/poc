@@ -3,12 +3,23 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, Check, Loader2, Mail, Plug, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  FileText,
+  Inbox,
+  Loader2,
+  Mail,
+  Paperclip,
+  Plug,
+  RefreshCw,
+} from "lucide-react";
 import {
   disconnectConnector,
   getConnectorFolders,
   getConnectorProviders,
   getConnectors,
+  getConnectorStats,
   getSyncRun,
   startConnectorOAuth,
   startConnectorSync,
@@ -18,6 +29,7 @@ import { SkeletonBar } from "@/components/Skeleton";
 import type {
   ConnectorConnection,
   ConnectorProvider,
+  ConnectorStats,
   ConnectorSyncRun,
   MailFolder,
 } from "@/types/connector";
@@ -25,6 +37,9 @@ import type {
 const POLL_INTERVAL_MS = 2000;
 // A running sync loads the backend heavily; tolerate a few dropped polls.
 const MAX_POLL_FAILURES = 5;
+// Counters move more slowly than a run's activity line, and this keeps ticking
+// long after a sync finishes while the pipeline drains.
+const STATS_POLL_INTERVAL_MS = 5000;
 
 function providerIcon(provider: string) {
   return provider === "GMAIL" || provider === "OUTLOOK" || provider === "FAKE" ? Mail : Plug;
@@ -244,6 +259,7 @@ function ConnectedPanel({
   const [run, setRun] = useState<ConnectorSyncRun | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { stats, refreshStats } = useConnectorStats(connection.id);
 
   useEffect(() => {
     getConnectorFolders(connection.id).then(setFolders).catch(() => setFolders([]));
@@ -278,6 +294,7 @@ function ConnectedPanel({
     setStarting(true);
     try {
       const { run_id } = await startConnectorSync(connection.id);
+      refreshStats();
       let consecutiveFailures = 0;
       pollRef.current = setInterval(async () => {
         try {
@@ -286,6 +303,7 @@ function ConnectedPanel({
           setRun(latest);
           if (latest.status !== "RUNNING") {
             if (pollRef.current) clearInterval(pollRef.current);
+            refreshStats();
             await onChanged().catch(() => undefined);
           }
         } catch {
@@ -312,10 +330,19 @@ function ConnectedPanel({
     }
   }
 
-  const syncing = run?.status === "RUNNING" || starting;
+  // A sync started in another tab is still this account's sync, and starting a
+  // second one would only be refused by the backend.
+  const lastRun = stats?.last_run ?? null;
+  const syncing = run?.status === "RUNNING" || starting || lastRun?.status === "RUNNING";
+
+  // The run this tab is watching, or a stored one still going or ended badly.
+  // A clean finish is already the tiles; anything else needs its own words.
+  const runToShow = run ?? (lastRun && lastRun.status !== "COMPLETED" ? lastRun : null);
 
   return (
     <div className="mt-5 border-t pt-4 space-y-4">
+      <SyncStats connection={connection} stats={stats} run={run} />
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Folder / label</label>
@@ -381,15 +408,202 @@ function ConnectedPanel({
         </button>
       </div>
 
-      <p className="text-xs text-gray-400">
-        {connection.last_sync_at
-          ? `Last synced ${new Date(connection.last_sync_at).toLocaleString()}`
-          : "Never synced"}
-      </p>
-
-      {run && <SyncProgress run={run} />}
+      {runToShow && <SyncProgress run={runToShow} />}
     </div>
   );
+}
+
+/**
+ * The connection's counters, kept fresh for as long as anything is moving.
+ *
+ * Polls on its own rather than riding the sync poll: work outlives the run that
+ * started it (the pipeline drains afterwards) and can start elsewhere (another
+ * tab, a sync already under way when this page loaded), so the numbers have to
+ * keep up in both cases.
+ */
+function useConnectorStats(connectionId: string) {
+  const [stats, setStats] = useState<ConnectorStats | null>(null);
+  const [pulse, setPulse] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function tick() {
+      try {
+        const next: ConnectorStats = await getConnectorStats(connectionId);
+        if (cancelled) return;
+        setStats(next);
+        if (next.last_run?.status === "RUNNING" || next.invoices.in_progress > 0) {
+          timer = setTimeout(tick, STATS_POLL_INTERVAL_MS);
+        }
+      } catch {
+        // Counters are not worth interrupting the user over; the next sync,
+        // or the next visit, picks them up again.
+      }
+    }
+
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [connectionId, pulse]);
+
+  // Restarts the loop above, for when this tab is the one that caused a change.
+  const refreshStats = useCallback(() => setPulse((n) => n + 1), []);
+
+  return { stats, refreshStats };
+}
+
+/**
+ * What this account has actually pulled in — the question the page could not
+ * answer before a sync was started from it.
+ *
+ * The tiles describe the most recent sync, since that is what "last synced"
+ * refers to; the line underneath carries the running totals. A live `run` from
+ * this tab wins over the stored one so the numbers climb as the sync works
+ * rather than jumping when it ends.
+ */
+function SyncStats({
+  connection,
+  stats,
+  run,
+}: {
+  connection: ConnectorConnection;
+  stats: ConnectorStats | null;
+  run: ConnectorSyncRun | null;
+}) {
+  if (!stats) return <SyncStatsSkeleton />;
+
+  const latest = run ?? stats.last_run;
+  const syncing = latest?.status === "RUNNING";
+  const { invoices, totals } = stats;
+  const unreviewed = invoices.needs_review + invoices.invalid;
+
+  return (
+    <div className="rounded-lg border bg-gray-50 p-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-2.5">
+        <span className="text-xs font-medium text-gray-700">
+          {syncing ? "This sync" : stats.runs === 0 ? "Nothing pulled in yet" : "Last sync"}
+        </span>
+        <span
+          className="text-xs text-gray-500"
+          title={connection.last_sync_at ? parseTimestamp(connection.last_sync_at).toLocaleString() : undefined}
+        >
+          {connection.last_sync_at
+            ? `Last synced ${timeAgo(connection.last_sync_at)}`
+            : "Never synced"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <StatTile icon={Inbox} label="Mails fetched" value={latest?.messages_scanned ?? 0} />
+        <StatTile
+          icon={Paperclip}
+          label="With attachments"
+          value={latest?.messages_with_attachments ?? 0}
+          hint={latest ? `${latest.attachments_found} file(s)` : undefined}
+        />
+        <StatTile
+          icon={FileText}
+          label="Invoices"
+          value={latest?.documents_processed ?? 0}
+          hint={latest && latest.skipped_duplicates > 0 ? `${latest.skipped_duplicates} already seen` : undefined}
+        />
+        <StatTile
+          icon={Loader2}
+          label="In progress"
+          value={invoices.in_progress}
+          busy={invoices.in_progress > 0}
+        />
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+        <span>
+          All time: {totals.messages_scanned} mail scanned · {invoices.total} invoice(s)
+        </span>
+        {unreviewed > 0 && (
+          <Link href="/documents?source=CONNECTOR" className="text-blue-600 hover:underline">
+            {unreviewed} to review
+          </Link>
+        )}
+        {invoices.failed > 0 && <span className="text-red-600">{invoices.failed} failed</span>}
+      </div>
+    </div>
+  );
+}
+
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  busy = false,
+}: {
+  icon: typeof Mail;
+  label: string;
+  value: number;
+  hint?: string;
+  busy?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-white px-3 py-2">
+      <div className="flex items-center gap-1.5 text-gray-500">
+        <Icon className={`w-3 h-3 flex-shrink-0 ${busy ? "animate-spin" : ""}`} />
+        <span className="text-[11px] leading-tight">{label}</span>
+      </div>
+      <p className={`mt-1 text-lg font-semibold leading-none ${busy ? "text-blue-600" : "text-gray-900"}`}>
+        {value}
+      </p>
+      {/* Reserved either way, so a hint appearing mid-sync doesn't shift the row. */}
+      <p className="mt-1 h-3 text-[11px] leading-3 text-gray-400 truncate">{hint ?? ""}</p>
+    </div>
+  );
+}
+
+/** Holds the strip's shape while the first stats request is in flight. */
+function SyncStatsSkeleton() {
+  return (
+    <div className="rounded-lg border bg-gray-50 p-3" aria-busy="true" aria-label="Loading sync stats">
+      <div className="flex items-center justify-between mb-2.5">
+        <SkeletonBar className="h-3 w-20" />
+        <SkeletonBar className="h-3 w-28" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-lg border bg-white px-3 py-2 space-y-2">
+            <SkeletonBar className="h-3 w-16" />
+            <SkeletonBar className="h-4 w-8" />
+            <SkeletonBar className="h-3 w-12" />
+          </div>
+        ))}
+      </div>
+      <SkeletonBar className="mt-2.5 h-3 w-48" />
+    </div>
+  );
+}
+
+/**
+ * The backend stores naive UTC timestamps. JavaScript reads a date-time with no
+ * offset as local time, which would put every one of them hours out.
+ */
+function parseTimestamp(iso: string): Date {
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso);
+  return new Date(hasZone ? iso : `${iso}Z`);
+}
+
+/** Relative for as long as that is the more useful reading, absolute after. */
+function timeAgo(iso: string): string {
+  const date = parseTimestamp(iso);
+  const minutes = Math.round((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  if (days <= 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return date.toLocaleDateString();
 }
 
 function SyncProgress({ run }: { run: ConnectorSyncRun }) {
@@ -419,12 +633,10 @@ function SyncProgress({ run }: { run: ConnectorSyncRun }) {
         </div>
       )}
 
+      {/* Only what the stat tiles above don't already say. */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-        <span>{run.messages_scanned} scanned</span>
-        <span>{run.attachments_found} attachment(s)</span>
-        <span>{run.documents_processed} processed</span>
         {run.skipped_duplicates > 0 && <span>{run.skipped_duplicates} already seen</span>}
-        {run.skipped_unsupported > 0 && <span>{run.skipped_unsupported} skipped</span>}
+        {run.skipped_unsupported > 0 && <span>{run.skipped_unsupported} not an invoice</span>}
         {run.documents_failed > 0 && <span className="text-red-600">{run.documents_failed} failed</span>}
       </div>
 

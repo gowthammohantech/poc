@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS connector_sync_runs (
     status TEXT NOT NULL DEFAULT 'RUNNING',     -- RUNNING|COMPLETED|PARTIAL|FAILED
     trigger TEXT NOT NULL DEFAULT 'MANUAL',
     messages_scanned INTEGER DEFAULT 0,
+    messages_with_attachments INTEGER DEFAULT 0,
     attachments_found INTEGER DEFAULT 0,
     documents_created INTEGER DEFAULT 0,
     documents_processed INTEGER DEFAULT 0,

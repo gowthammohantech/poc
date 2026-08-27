@@ -77,6 +77,76 @@ async def list_run_items(run_id: str) -> list[dict]:
         return [dict(r) for r in await cursor.fetchall()]
 
 
+# Every stage a document passes through before validation settles it. Wider
+# than _ABANDONED_DOCUMENT_STATUSES below, which is only about restart recovery:
+# a connector document resting at COMPLEXITY_ANALYZED is still on its way to
+# becoming an invoice, because its sync calls the pipeline itself.
+_IN_FLIGHT_DOCUMENT_STATUSES = (
+    "UPLOADED", "SAVING", "SAVED", "CONVERTING", "PREPROCESSING", "PREPROCESSED",
+    "ANALYZING_COMPLEXITY", "COMPLEXITY_ANALYZED", "ROUTING", "ROUTED",
+    "OCR_RUNNING", "EXTRACTING", "EXTRACTED", "VALIDATING",
+)
+
+# Run counters worth summing across a connection's whole history.
+_TOTAL_COLUMNS = (
+    "messages_scanned", "messages_with_attachments", "attachments_found",
+    "documents_created", "documents_processed", "documents_failed",
+    "skipped_duplicates", "skipped_unsupported",
+)
+
+
+async def get_connection_stats(connection_id: str) -> dict:
+    """What a connection has pulled in so far, without having to start a sync.
+
+    Two sources, deliberately: the run counters are a record of what each sync
+    saw in the mailbox, while the invoice counts come from the documents table,
+    because a document keeps moving through the pipeline (and can be reviewed,
+    or fail) long after the run that ingested it has finished.
+    """
+    sums = ", ".join(f"COALESCE(SUM({column}), 0) AS {column}" for column in _TOTAL_COLUMNS)
+    in_flight = ", ".join("?" for _ in _IN_FLIGHT_DOCUMENT_STATUSES)
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            f"""SELECT COUNT(*) AS runs, {sums} FROM connector_sync_runs
+                WHERE connection_id = ?""",
+            (connection_id,),
+        )
+        totals = dict(await cursor.fetchone())
+
+        cursor = await db.execute(
+            """SELECT * FROM connector_sync_runs WHERE connection_id = ?
+               ORDER BY started_at DESC LIMIT 1""",
+            (connection_id,),
+        )
+        row = await cursor.fetchone()
+        last_run = dict(row) if row else None
+
+        cursor = await db.execute(
+            f"""SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN status IN ({in_flight}) THEN 1 ELSE 0 END) AS in_progress,
+                    SUM(CASE WHEN status IN ('VALID', 'COMPLETED') THEN 1 ELSE 0 END) AS ready,
+                    SUM(CASE WHEN status = 'NEEDS_REVIEW' THEN 1 ELSE 0 END) AS needs_review,
+                    -- Extracted, but validation found problems in it.
+                    SUM(CASE WHEN status = 'INVALID' THEN 1 ELSE 0 END) AS invalid,
+                    -- Never got as far as an extraction.
+                    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed
+                FROM documents WHERE source_connector_id = ?""",
+            (*_IN_FLIGHT_DOCUMENT_STATUSES, connection_id),
+        )
+        # SUM() over no rows is NULL; the UI wants zeroes.
+        invoices = {k: (v or 0) for k, v in dict(await cursor.fetchone()).items()}
+
+    return {
+        "connection_id": connection_id,
+        "runs": totals.pop("runs", 0),
+        "last_run": last_run,
+        "totals": totals,
+        "invoices": invoices,
+    }
+
+
 async def has_running_sync(connection_id: str) -> bool:
     async with get_db() as db:
         cursor = await db.execute(
@@ -224,7 +294,11 @@ async def run_sync(run_id: str, connection_id: str):
             max_messages=connection.get("max_messages_per_sync") or 25,
         )
         await _update_run(
-            run_id, messages_scanned=scanned, attachments_found=len(refs),
+            run_id,
+            messages_scanned=scanned,
+            # Several attachments can share one message, so this is not len(refs).
+            messages_with_attachments=len({ref.message_id for ref in refs}),
+            attachments_found=len(refs),
             current_activity=f"Found {len(refs)} attachment(s)",
         )
 

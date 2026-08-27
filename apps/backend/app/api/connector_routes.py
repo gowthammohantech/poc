@@ -114,6 +114,18 @@ async def list_sync_runs(connection_id: str):
     return await connector_sync_service.list_runs(connection_id)
 
 
+@router.get("/{connection_id}/stats")
+async def get_connection_stats(connection_id: str):
+    """Mailbox and invoice counts for the connection, plus its most recent run.
+
+    The page needs these on load, before — and long after — any sync of its own.
+    """
+    connection = await connector_service.get_connection(connection_id)
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    return await connector_sync_service.get_connection_stats(connection_id)
+
+
 @router.get("/sync-runs/{run_id}")
 async def get_sync_run(run_id: str):
     run = await connector_sync_service.get_run(run_id)

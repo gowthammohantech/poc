@@ -39,6 +39,8 @@ export interface ConnectorSyncRun {
   status: SyncRunStatus;
   trigger: string;
   messages_scanned: number;
+  /** Messages that carried at least one attachment — not the attachment count. */
+  messages_with_attachments: number;
   attachments_found: number;
   documents_created: number;
   documents_processed: number;
@@ -49,6 +51,46 @@ export interface ConnectorSyncRun {
   error_message: string | null;
   started_at: string;
   finished_at: string | null;
+}
+
+/** Lifetime run counters for a connection, summed across every sync. */
+export interface ConnectorSyncTotals {
+  messages_scanned: number;
+  messages_with_attachments: number;
+  attachments_found: number;
+  documents_created: number;
+  documents_processed: number;
+  documents_failed: number;
+  skipped_duplicates: number;
+  skipped_unsupported: number;
+}
+
+/** Where the invoices this connection produced have got to. */
+export interface ConnectorInvoiceCounts {
+  total: number;
+  /** Still somewhere in the OCR/extraction pipeline. */
+  in_progress: number;
+  ready: number;
+  needs_review: number;
+  /** Extracted, but validation found problems in it. */
+  invalid: number;
+  /** Never got as far as an extraction. */
+  failed: number;
+}
+
+/**
+ * What a connection has pulled in, available without starting a sync.
+ *
+ * `totals` is history — what the mailbox syncs saw. `invoices` is the present
+ * state of the documents those syncs created, which keeps changing after a run
+ * has finished.
+ */
+export interface ConnectorStats {
+  connection_id: string;
+  runs: number;
+  last_run: ConnectorSyncRun | null;
+  totals: ConnectorSyncTotals;
+  invoices: ConnectorInvoiceCounts;
 }
 
 export type SyncItemStatus =
