@@ -224,7 +224,9 @@ async def run_sync(run_id: str, connection_id: str):
                 await _update_run(run_id, **counters)
                 continue
 
-            await _update_run(run_id, current_activity=f"Processing {ref.filename}…")
+            await _update_run(
+                run_id, current_activity=f"Processing {ref.filename}…", **counters
+            )
             try:
                 if existing:
                     # A previous attempt failed at the OCR stage; retry the
@@ -250,7 +252,6 @@ async def run_sync(run_id: str, connection_id: str):
                     )
                     document_id = result.document_id
                     counters["documents_created"] += 1
-                    await _update_run(run_id, **counters)
 
                 await run_processing_pipeline(document_id)
                 counters["documents_processed"] += 1

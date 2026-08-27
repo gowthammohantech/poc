@@ -30,9 +30,17 @@ function DocumentsPage() {
     isSourceFilter(requested) ? requested : "ALL"
   );
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     getDocuments()
-      .then(setDocs)
+      .then((data) => {
+        setDocs(data);
+        setLoadError(null);
+      })
+      // A running connector sync loads the backend enough that a request can
+      // drop. Say so rather than sitting on an empty table forever.
+      .catch(() => setLoadError("Could not load invoices. Retry in a moment."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -89,6 +97,16 @@ function DocumentsPage() {
 
         {loading ? (
           <p className="text-gray-500">Loading...</p>
+        ) : loadError ? (
+          <div className="bg-white rounded-xl border p-12 text-center">
+            <p className="text-red-600 text-sm">{loadError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-3 text-sm text-blue-600 hover:underline"
+            >
+              Retry
+            </button>
+          </div>
         ) : visible.length === 0 ? (
           <div className="bg-white rounded-xl border p-12 text-center">
             {docs.length === 0 ? (

@@ -22,6 +22,8 @@ import type {
 } from "@/types/connector";
 
 const POLL_INTERVAL_MS = 2000;
+// A running sync loads the backend heavily; tolerate a few dropped polls.
+const MAX_POLL_FAILURES = 5;
 
 function providerIcon(provider: string) {
   return provider === "GMAIL" || provider === "OUTLOOK" || provider === "FAKE" ? Mail : Plug;
@@ -49,7 +51,9 @@ function ConnectorsPage() {
   }, []);
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
+    refresh()
+      .catch((err) => setNotice({ kind: "error", text: describe(err) }))
+      .finally(() => setLoading(false));
   }, [refresh]);
 
   // The provider sends the user back here after consent; the backend has
@@ -248,16 +252,22 @@ function ConnectedPanel({
     setStarting(true);
     try {
       const { run_id } = await startConnectorSync(connection.id);
+      let consecutiveFailures = 0;
       pollRef.current = setInterval(async () => {
         try {
           const latest: ConnectorSyncRun = await getSyncRun(run_id);
+          consecutiveFailures = 0;
           setRun(latest);
           if (latest.status !== "RUNNING") {
             if (pollRef.current) clearInterval(pollRef.current);
-            await onChanged();
+            await onChanged().catch(() => undefined);
           }
         } catch {
-          if (pollRef.current) clearInterval(pollRef.current);
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= MAX_POLL_FAILURES && pollRef.current) {
+            clearInterval(pollRef.current);
+            onError("Lost contact with the server; the sync may still be running.");
+          }
         }
       }, POLL_INTERVAL_MS);
     } catch (err) {
