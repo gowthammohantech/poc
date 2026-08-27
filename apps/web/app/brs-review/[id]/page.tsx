@@ -116,9 +116,9 @@ export default function BrsReviewPage() {
           <span className={`px-3 py-1 rounded-full border text-sm font-medium ${statusColor}`}>
             {val.status}
           </span>
-          <span className="px-3 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-800">
+          {/* <span className="px-3 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-800">
             Overall confidence: {overallConfidence}%
-          </span>
+          </span> */}
           <a
             href={`/brs-matching?documentId=${id}`}
             className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-colors"

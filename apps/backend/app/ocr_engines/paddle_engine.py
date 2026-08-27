@@ -3,10 +3,26 @@ from PIL import Image
 
 CONFIDENCE_THRESHOLD = 0.70
 
+_ocr_instance = None
+
+
+def _get_ocr_instance():
+    global _ocr_instance
+    if _ocr_instance is None:
+        from paddleocr import PaddleOCR
+
+        # PaddleOCR 3.x removed the former ``show_log`` and ``use_angle_cls``
+        # constructor options. enable_mkldnn=False works around a crash in
+        # paddlepaddle's oneDNN/PIR CPU inference path (NotImplementedError:
+        # ConvertPirAttribute2RuntimeAttribute not support ...) that otherwise
+        # fails every page and silently degrades this engine to zero confidence.
+        _ocr_instance = PaddleOCR(lang="en", enable_mkldnn=False)
+    return _ocr_instance
+
 
 def run_paddle(image_paths: List[str]) -> Dict[str, Any]:
     try:
-        from paddleocr import PaddleOCR
+        ocr = _get_ocr_instance()
     except ImportError:
         return {
             "text": "",
@@ -15,11 +31,6 @@ def run_paddle(image_paths: List[str]) -> Dict[str, Any]:
             "low_confidence": True,
             "metadata": {"engine": "PADDLEOCR", "error": "paddleocr not installed"},
         }
-
-    # PaddleOCR 3.x removed the former ``show_log`` and ``use_angle_cls``
-    # constructor options. The minimal constructor works across the supported
-    # installation and keeps this engine from failing before it reads a page.
-    ocr = PaddleOCR(lang="en")
     all_text_parts = []
     all_confidences = []
     page_references = []

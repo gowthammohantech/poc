@@ -20,28 +20,32 @@ def run_ocr_with_fallback(initial_engine: str, image_paths: List[str]) -> tuple[
     """
     engines_to_try = _build_fallback_chain(initial_engine)
 
+    last_result = None
+    last_engine = None
     for engine in engines_to_try:
         try:
             result = run_ocr_engine(engine, image_paths)
-            if not result.get("low_confidence", True):
-                return result, engine
-            # Continue to next engine on low confidence
         except Exception:
-            pass  # Continue to next engine on error
+            continue  # Continue to next engine on error
+        last_result, last_engine = result, engine
+        if not result.get("low_confidence", True):
+            return result, engine
+        # Continue to next engine on low confidence
 
-    # Return last attempt even if low confidence
-    try:
-        last_result = run_ocr_engine(engines_to_try[-1], image_paths)
-        return last_result, engines_to_try[-1]
-    except Exception:
-        return {
-            "text": "",
-            "confidence": 0.0,
-            "word_count": 0,
-            "low_confidence": True,
-            "metadata": {"engine": "FAILED", "error": "all engines failed"},
-        }, "FAILED"
+    # All engines errored or stayed low-confidence; return the last attempt made
+    if last_result is not None:
+        return last_result, last_engine
+
+    return {
+        "text": "",
+        "confidence": 0.0,
+        "word_count": 0,
+        "low_confidence": True,
+        "metadata": {"engine": "FAILED", "error": "all engines failed"},
+    }, "FAILED"
 
 
 def _build_fallback_chain(initial_engine: str) -> List[str]:
-    return ["TESSERACT"]
+    if initial_engine == "TESSERACT":
+        return ["TESSERACT", "PADDLEOCR"]
+    return [initial_engine]
