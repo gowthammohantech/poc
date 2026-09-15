@@ -9,6 +9,10 @@ import { brsExtractionAgent } from "./agents/brsExtractionAgent.js";
 import { brsValidationAgent } from "./agents/brsValidationAgent.js";
 import { bankStatementDirectVisionAgent } from "./agents/bankStatementDirectVisionAgent.js";
 import { brsProcessingWorkflow } from "./workflows/brsProcessingWorkflow.js";
+import { usDocClassifierAgent } from "./agents/usDocClassifierAgent.js";
+import { usSaDirectVisionAgent } from "./agents/usSaDirectVisionAgent.js";
+import { usSoDirectVisionAgent } from "./agents/usSoDirectVisionAgent.js";
+import { usValidationAgent } from "./agents/usValidationAgent.js";
 
 export const mastra = new Mastra({
   agents: {
@@ -20,6 +24,10 @@ export const mastra = new Mastra({
     brsExtractionAgent,
     brsValidationAgent,
     bankStatementDirectVisionAgent,
+    usDocClassifierAgent,
+    usSaDirectVisionAgent,
+    usSoDirectVisionAgent,
+    usValidationAgent,
   },
   workflows: {
     invoiceProcessingWorkflow,

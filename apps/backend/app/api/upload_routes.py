@@ -12,6 +12,7 @@ async def upload_invoice(
     expected_fields: str = Form(None),
     must_use_llm: bool = Form(False),
     source: str = Form(ingest_service.SOURCE_MANUAL),
+    country: str = Form(ingest_service.COUNTRY_INDIA),
 ):
     try:
         result = await ingest_service.ingest_upload_file(
@@ -19,6 +20,7 @@ async def upload_invoice(
             expected_fields=expected_fields,
             must_use_llm=must_use_llm,
             source=source,
+            country=country,
         )
     except ingest_service.IngestError as e:
         if e.stage == "VALIDATE":
@@ -32,5 +34,6 @@ async def upload_invoice(
         page_count=result.page_count,
         complexity_score=result.complexity_score,
         complexity_level=result.complexity_level,
+        country=result.country,
         message="Upload, conversion, preprocessing, and complexity analysis complete. Call /process to start OCR.",
     )

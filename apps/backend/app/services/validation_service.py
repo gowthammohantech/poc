@@ -160,17 +160,14 @@ def _validate_bank_details(invoice: dict) -> List[RuleCheck]:
     return []
 
 
-def determine_validation_status(rule_checks: List[RuleCheck], llm_checks: List[dict]) -> str:
-    errors = [c for c in rule_checks if not c.passed and c.rule in (
-        "invoice_number_present", "invoice_date_valid", "total_math_check",
-        "vendor_gstin_format", "customer_gstin_format", "cgst_igst_mutually_exclusive"
-    )]
-    warnings = [c for c in rule_checks if not c.passed and c not in errors]
+def determine_validation_status(rule_checks: List[RuleCheck], llm_checks: List[dict],
+                                ruleset=None) -> str:
+    """Status for a set of checks. Defaults to the India invoice rules.
 
-    llm_flags = [c for c in llm_checks if c.get("result") == "FAIL"]
-
-    if errors:
-        return "INVALID"
-    if warnings or llm_flags:
-        return "NEEDS_REVIEW"
-    return "VALID"
+    The rule set is imported lazily: validation_rulesets imports this module to
+    build the India entry, so importing it at module scope would be circular.
+    """
+    if ruleset is None:
+        from app.services.validation_rulesets import INDIA_INVOICE_RULESET
+        ruleset = INDIA_INVOICE_RULESET
+    return ruleset.determine_status(rule_checks, llm_checks)

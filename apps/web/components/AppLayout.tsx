@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
+import { hydrateCountryFromStorage } from "@/lib/country";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 
@@ -14,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem("sidebar_open");
     if (saved !== null) setSidebarOpen(saved === "true");
+    hydrateCountryFromStorage();
   }, []);
 
   function toggle() {

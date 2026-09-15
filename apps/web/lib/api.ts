@@ -1,5 +1,8 @@
 import axios from "axios";
 
+import type { Country } from "@/lib/country";
+import type { UsReviewData } from "@/types/usDocument";
+
 // Keep browser requests on the frontend origin. The Next.js route handler proxies
 // them to FastAPI using the server-only FASTAPI_URL environment variable.
 const FASTAPI_URL = "/api/backend";
@@ -12,12 +15,16 @@ export const api = axios.create({
 export async function uploadInvoice(
   file: File,
   expectedFields?: string,
-  mustUseLlm?: boolean
+  mustUseLlm?: boolean,
+  country?: Country
 ) {
   const form = new FormData();
   form.append("file", file);
   if (expectedFields) form.append("expected_fields", expectedFields);
   if (mustUseLlm) form.append("must_use_llm", "true");
+  // Omitted rather than defaulted, so a caller that predates the country
+  // dimension still posts exactly the form the backend used to receive.
+  if (country) form.append("country", country);
   const { data } = await api.post("/api/documents/upload", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
@@ -60,6 +67,23 @@ export function getPageImageUrl(pageUrl: string) {
   const normalizedPageUrl = pageUrl.replace(/\\/g, "/");
   const suffix = normalizedPageUrl.startsWith("/") ? normalizedPageUrl : `/${normalizedPageUrl}`;
   return `${FASTAPI_URL}${suffix}`;
+}
+
+// ---- USA Document API ----
+// A US purchase order or shipping authorization travels the same endpoints as
+// an invoice -- the payload keeps the "invoice" envelope key -- so these are
+// typed views of the invoice functions rather than new routes.
+
+export async function getUsReview(documentId: string): Promise<UsReviewData> {
+  const { data } = await api.get(`/api/documents/${documentId}/review`);
+  return data as UsReviewData;
+}
+
+export async function submitUsReview(documentId: string, correctedDocument: unknown) {
+  const { data } = await api.post(`/api/documents/${documentId}/review/submit`, {
+    corrected_invoice: correctedDocument,
+  });
+  return data;
 }
 
 // ---- BRS Agent API ----

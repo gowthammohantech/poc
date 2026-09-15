@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS documents (
     page_count INTEGER DEFAULT 0,
     expected_fields TEXT,
     must_use_llm INTEGER DEFAULT 0,
+    country TEXT NOT NULL DEFAULT 'INDIA',
+    doc_type TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

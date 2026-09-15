@@ -3,10 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+
+import { useCountry } from "./useCountry";
 import { Upload, FileText, LogOut, ChevronLeft, PanelLeftClose, Bot, ArrowLeftRight, Plug } from "lucide-react";
 
 const INVOICE_NAV_ITEMS = [
   { href: "/agents/invoice-ocr", label: "Process Invoice", icon: Upload },
+  { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/connectors", label: "Connectors", icon: Plug },
+];
+
+const US_NAV_ITEMS = [
+  { href: "/agents/invoice-ocr", label: "Process Document", icon: Upload },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/connectors", label: "Connectors", icon: Plug },
 ];
@@ -25,6 +33,16 @@ const AGENT_NAVIGATION = {
     activeClass: "bg-violet-50 text-violet-700 border border-violet-200",
     activeIconClass: "text-violet-600",
     items: INVOICE_NAV_ITEMS,
+  },
+  // The same routes as the invoice agent -- the country selector decides what
+  // they render -- with wording that matches the documents being processed.
+  invoiceUs: {
+    title: "US Order & Release Agent",
+    iconContainerClass: "bg-violet-100",
+    iconClass: "text-violet-600",
+    activeClass: "bg-violet-50 text-violet-700 border border-violet-200",
+    activeIconClass: "text-violet-600",
+    items: US_NAV_ITEMS,
   },
   brs: {
     title: "BRS Agent",
@@ -47,12 +65,19 @@ interface Props {
 export default function Sidebar({ onCollapse }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const activeAgent =
+  const { country } = useCountry();
+  const isBrs =
     pathname.startsWith("/agents/brs") ||
     pathname.startsWith("/brs-documents") ||
     pathname.startsWith("/brs-review") ||
-    pathname.startsWith("/brs-matching")
-      ? AGENT_NAVIGATION.brs
+    pathname.startsWith("/brs-matching");
+  // A US review screen keeps the US nav even if the selector was flipped back,
+  // so the sidebar matches the document on screen.
+  const isUs = pathname.startsWith("/us-review") || country === "USA";
+  const activeAgent = isBrs
+    ? AGENT_NAVIGATION.brs
+    : isUs
+      ? AGENT_NAVIGATION.invoiceUs
       : AGENT_NAVIGATION.invoice;
 
   async function handleSignOut() {

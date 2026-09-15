@@ -15,6 +15,10 @@ class DocumentCreate(BaseModel):
     source_connector_id: Optional[str] = None
     source_ref: Optional[str] = None
     source_metadata: Optional[str] = None
+    # Extraction regime: INDIA (GST invoices) or USA (POs and shipping
+    # authorizations). doc_type is filled in by the US classifier step.
+    country: str = "INDIA"
+    doc_type: Optional[str] = None
 
 
 class DocumentResponse(BaseModel):
@@ -27,6 +31,8 @@ class DocumentResponse(BaseModel):
     source_connector_id: Optional[str] = None
     source_ref: Optional[str] = None
     source_metadata: Optional[str] = None
+    country: str = "INDIA"
+    doc_type: Optional[str] = None
     complexity_score: Optional[float]
     complexity_level: Optional[str]
     complexity_reasons: Optional[str]
@@ -56,4 +62,5 @@ class UploadResponse(BaseModel):
     page_count: int
     complexity_score: Optional[float]
     complexity_level: Optional[str]
+    country: str = "INDIA"
     message: str
