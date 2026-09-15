@@ -15,11 +15,13 @@ async def create_document(data: DocumentCreate) -> str:
         await db.execute(
             """INSERT INTO documents
                (id, filename, original_path, mime_type, status, expected_fields, must_use_llm,
-                source, source_connector_id, source_ref, source_metadata, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'UPLOADED', ?, ?, ?, ?, ?, ?, ?, ?)""",
+                source, source_connector_id, source_ref, source_metadata, country, doc_type,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'UPLOADED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (doc_id, data.filename, data.original_path, data.mime_type,
              data.expected_fields, int(data.must_use_llm),
              data.source, data.source_connector_id, data.source_ref, data.source_metadata,
+             data.country, data.doc_type,
              now, now),
         )
         await db.commit()

@@ -35,6 +35,12 @@ SOURCE_API = "API"
 SOURCE_CONNECTOR = "CONNECTOR"
 VALID_SOURCES = {SOURCE_MANUAL, SOURCE_API, SOURCE_CONNECTOR}
 
+# Which extraction regime a document is processed under. INDIA runs the GST
+# invoice pipeline; USA runs the purchase-order / shipping-authorization one.
+COUNTRY_INDIA = "INDIA"
+COUNTRY_USA = "USA"
+VALID_COUNTRIES = {COUNTRY_INDIA, COUNTRY_USA}
+
 
 class IngestError(Exception):
     """A document could not be taken in. `stage` names the step that failed."""
@@ -53,6 +59,7 @@ class IngestResult:
     page_count: int
     complexity_score: Optional[float]
     complexity_level: Optional[str]
+    country: str = COUNTRY_INDIA
 
 
 def validate_ingest_type(filename: str, content_type: Optional[str]) -> str:
@@ -71,6 +78,12 @@ def normalize_source(source: Optional[str]) -> str:
     return candidate if candidate in VALID_SOURCES else SOURCE_MANUAL
 
 
+def normalize_country(country: Optional[str]) -> str:
+    """An unrecognised country falls back to INDIA, as normalize_source does."""
+    candidate = (country or COUNTRY_INDIA).strip().upper()
+    return candidate if candidate in VALID_COUNTRIES else COUNTRY_INDIA
+
+
 async def ingest_bytes(
     *,
     filename: str,
@@ -82,6 +95,7 @@ async def ingest_bytes(
     source_connector_id: Optional[str] = None,
     source_ref: Optional[str] = None,
     source_metadata: Optional[dict] = None,
+    country: str = COUNTRY_INDIA,
 ) -> IngestResult:
     """Save, split into pages, preprocess and score a document.
 
@@ -97,6 +111,7 @@ async def ingest_bytes(
         expected_fields=expected_fields,
         must_use_llm=must_use_llm,
         source=normalize_source(source),
+        country=normalize_country(country),
         source_connector_id=source_connector_id,
         source_ref=source_ref,
         source_metadata=json.dumps(source_metadata) if source_metadata else None,
@@ -161,6 +176,7 @@ async def ingest_bytes(
         page_count=len(page_paths),
         complexity_score=complexity["score"],
         complexity_level=complexity["level"],
+        country=normalize_country(country),
     )
 
 
@@ -170,6 +186,7 @@ async def ingest_upload_file(
     expected_fields: Optional[str] = None,
     must_use_llm: bool = False,
     source: str = SOURCE_MANUAL,
+    country: str = COUNTRY_INDIA,
 ) -> IngestResult:
     filename = file.filename or "upload"
     validate_ingest_type(filename, file.content_type)
@@ -180,4 +197,5 @@ async def ingest_upload_file(
         expected_fields=expected_fields,
         must_use_llm=must_use_llm,
         source=source,
+        country=country,
     )

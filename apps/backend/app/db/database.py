@@ -21,6 +21,11 @@ _COLUMN_ADDITIONS: dict[str, list[tuple[str, str]]] = {
         ("source_connector_id", "TEXT"),
         ("source_ref", "TEXT"),
         ("source_metadata", "TEXT"),
+        # The extraction regime a document belongs to. INDIA is the original
+        # behaviour, so every pre-existing row backfills to it.
+        ("country", "TEXT NOT NULL DEFAULT 'INDIA'"),
+        # US documents only: SO (purchase order) or SA (shipping authorization).
+        ("doc_type", "TEXT"),
     ],
     "connector_sync_runs": [
         ("messages_with_attachments", "INTEGER DEFAULT 0"),
@@ -35,6 +40,8 @@ _POST_ALTER_STATEMENTS = [
        ON documents(source_connector_id, source_ref)
        WHERE source_ref IS NOT NULL""",
     "CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source)",
+    "UPDATE documents SET country = 'INDIA' WHERE country IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_documents_country ON documents(country)",
 ]
 
 

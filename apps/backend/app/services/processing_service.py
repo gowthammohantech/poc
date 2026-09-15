@@ -135,8 +135,10 @@ async def run_processing_pipeline(document_id: str) -> dict:
     await docs.update_document_status(document_id, "EXTRACTED",
                                        ocr_engine=final_engine, processing_mode=processing_mode)
 
+    ruleset = get_ruleset(doc.get("country"), doc.get("doc_type"))
+
     async def validate_extraction(candidate: dict):
-        rule_checks = run_all_rules(candidate)
+        rule_checks = ruleset.run(candidate)
         rule_checks_dicts = [c.dict() for c in rule_checks]
         llm_val = await mastra_client.call_validation_agent({
             "document_id": document_id,
@@ -144,18 +146,13 @@ async def run_processing_pipeline(document_id: str) -> dict:
         })
         llm_checks = llm_val.get("llm_checks", [])
         llm_warnings = llm_val.get("warnings", [])
-        warnings = [c.message for c in rule_checks if not c.passed and c.rule not in (
-            "invoice_number_present", "invoice_date_valid", "total_math_check"
-        )] + llm_warnings
-        errors = [c.message for c in rule_checks if not c.passed and c.rule in (
-            "invoice_number_present", "invoice_date_valid", "total_math_check"
-        )]
+        warnings, errors = ruleset.partition_messages(rule_checks)
         return (
             rule_checks_dicts,
             llm_checks,
-            warnings,
+            warnings + llm_warnings,
             errors,
-            determine_validation_status(rule_checks, llm_checks),
+            ruleset.determine_status(rule_checks, llm_checks),
         )
 
     # Step 3: validate the local-OCR extraction first.
