@@ -1,6 +1,11 @@
 # Invoice OCR Platform
 
-End-to-end invoice processing platform: PDF/image → OCR → structured JSON → human review → export.
+End-to-end document processing platform: PDF/image → OCR → structured JSON → human review → export.
+
+Two document regimes, chosen with the **country selector in the top right**:
+
+- **India** — GST tax invoices (the original flow).
+- **USA** — purchase orders (**SO**) and shipping authorizations (**SA**).
 
 ## Stack
 
@@ -64,7 +69,7 @@ npm run dev
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check |
-| `/api/documents/upload` | POST | Upload invoice |
+| `/api/documents/upload` | POST | Upload a document (`country` = `INDIA`\|`USA`) |
 | `/api/documents` | GET | List all documents |
 | `/api/documents/{id}` | GET | Get document status |
 | `/api/documents/{id}/pages` | GET | Get page list |
@@ -128,7 +133,38 @@ without it they are held in plaintext and the server logs a warning on startup.
 > There is no user model in this app, so a connected mailbox is shared by everyone
 > who can sign in to the sandbox.
 
+## US documents (SO and SA)
+
+Select **United States** in the top-right selector and the upload page, the
+documents list and the review screen all switch regime. The document's own
+country is stored on the row, so a link always opens the right review screen
+whatever the selector says.
+
+Two document types, detected automatically:
+
+| Type | Document | Shape |
+|------|----------|-------|
+| **SO** | Purchase order | Order header, three address blocks, priced line items (`quantity × unit cost = extended cost`) |
+| **SA** | Shipping authorization | A parts × week demand schedule: `PO / Part Number / Description / Std Pack` against ~35 weekly buckets, each with a ship date and a delivery date |
+
+The US path differs from the India one in three deliberate ways:
+
+- **Vision always.** Both documents are dense tables where the meaning of a
+  number is the column it sits in, and Tesseract reads a grid as one paragraph.
+  Tesseract still runs, for the review screen's word boxes and as a second
+  opinion on a digit.
+- **Original page images**, not the preprocessed ones — binarising for
+  Tesseract can thin out the hairline rules that carry the column alignment.
+- **Year inference in code, not the model.** A release prints `22-Jun` with no
+  year; the year is walked forward from the release date and rolls over at the
+  December-to-January boundary.
+
+A document the classifier cannot place is marked `UNKNOWN`, read as a purchase
+order, and left in `NEEDS_REVIEW` — nothing about it is treated as fatal.
+
 ## OCR Routing Logic
+
+Applies to the India flow. The US flow skips the router (see above).
 
 | Complexity Score | Engine |
 |-----------------|--------|
@@ -142,9 +178,20 @@ Fallback chain: Tesseract → PaddleOCR → OpenAI Vision (triggered on low conf
 ## Document Status Flow
 
 ```
-UPLOADED → SAVING → SAVED → CONVERTING → PREPROCESSING → 
-COMPLEXITY_ANALYZED → ROUTING → ROUTED → OCR_RUNNING → 
+UPLOADED → SAVING → SAVED → CONVERTING → PREPROCESSING →
+COMPLEXITY_ANALYZED → ROUTING → ROUTED → OCR_RUNNING →
 EXTRACTING → EXTRACTED → VALIDATING → VALID|NEEDS_REVIEW|INVALID → COMPLETED
+```
+
+The US flow inserts `CLASSIFYING → CLASSIFIED` between `OCR_RUNNING` and
+`EXTRACTING`.
+
+## Tests
+
+```bash
+cd apps/backend && pytest        # migrations, validation rules, pipeline, exports
+cd apps/web && npm test          # vitest, lib/ only
+cd apps/web && npx tsc --noEmit
 ```
 
 ## Project Structure
@@ -166,7 +213,7 @@ apps/
     types/           TypeScript interfaces
 mastra-service/      Mastra AI agents + workflows
   src/mastra/
-    agents/          4 agents (router, extractor, vision, validator)
+    agents/          India invoice, BRS, and US (classifier, SO, SA, validator)
     prompts/         System prompts
     schemas/         Zod invoice schema
     workflows/       invoiceProcessingWorkflow

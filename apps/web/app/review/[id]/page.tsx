@@ -6,6 +6,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { getReview, submitReview, getExportUrl, getDocuments } from "@/lib/api";
 import PagePreview from "@/components/PagePreview";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
+import { normalizeCountry } from "@/lib/country";
 import { Field, NavArrow, inputCls, tdInputCls } from "@/components/review/ReviewPrimitives";
 import { SkeletonBar } from "@/components/Skeleton";
 import type { ReviewData, InvoiceData, Document } from "@/types/invoice";
@@ -15,7 +16,9 @@ export default function ReviewPage() {
   const router = useRouter();
   // The documents list passes its active source filter through, so the arrows
   // walk exactly the rows the user was looking at rather than the full list.
-  const sourceFilter = useSearchParams().get("source");
+  const search = useSearchParams();
+  const sourceFilter = search.get("source");
+  const countryFilter = search.get("country");
   const [review, setReview] = useState<ReviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -49,18 +52,26 @@ export default function ReviewPage() {
   }, [id, reset, router]);
 
   // Sibling invoices, in the same order the documents list shows them, so the
-  // arrows walk the list the user came from.
+  // arrows walk the list the user came from. The country guard keeps them
+  // inside one regime -- a US document would redirect to a different screen
+  // mid-walk. Both filters are optional, so an arrival with no query params
+  // behaves exactly as it did before.
   useEffect(() => {
     getDocuments()
       .then((data: Document[]) =>
         setDocIds(
           data
-            .filter((d) => !sourceFilter || (d.source ?? "MANUAL") === sourceFilter)
+            .filter(
+              (d) =>
+                (!sourceFilter || (d.source ?? "MANUAL") === sourceFilter) &&
+                (!countryFilter ||
+                  normalizeCountry(d.country) === normalizeCountry(countryFilter))
+            )
             .map((d) => d.id)
         )
       )
       .catch(() => setDocIds([]));
-  }, [sourceFilter]);
+  }, [sourceFilter, countryFilter]);
 
   const currentIndex = docIds.indexOf(id as string);
   const prevId = currentIndex > 0 ? docIds[currentIndex - 1] : null;
@@ -70,10 +81,13 @@ export default function ReviewPage() {
   const goTo = useCallback(
     (targetId: string | null) => {
       if (!targetId) return;
-      const suffix = sourceFilter ? `?source=${sourceFilter}` : "";
-      router.push(`/review/${targetId}${suffix}`);
+      // Carry the whole query string, not just the source: dropping the
+      // country would rebuild a different sibling list on the next page and
+      // the walk would jump.
+      const suffix = search.toString();
+      router.push(`/review/${targetId}${suffix ? `?${suffix}` : ""}`);
     },
-    [router, sourceFilter]
+    [router, search]
   );
 
   useEffect(() => {
