@@ -3,11 +3,14 @@
 import { Menu, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 
+import CountrySelector from "./CountrySelector";
+
 const PAGE_TITLES: [string, string][] = [
   ["/agents/invoice-ocr", "Process Invoice"],
   ["/documents", "Documents"],
   ["/connectors", "Connectors"],
   ["/review", "Invoice Review"],
+  ["/us-review", "US Document Review"],
   ["/brs-matching", "Bank Reconciliation — Matching"],
 ];
 
@@ -32,6 +35,7 @@ export default function TopBar({ onToggle, sidebarOpen }: Props) {
         {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
       <span className="text-sm font-medium text-slate-700">{title}</span>
+      <CountrySelector className="ml-auto" />
     </header>
   );
 }

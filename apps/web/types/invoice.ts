@@ -1,3 +1,6 @@
+import type { Country } from "@/lib/country";
+import type { UsDocType } from "./usDocument";
+
 export interface Vendor {
   name: string | null;
   gstin: string | null;
@@ -128,6 +131,9 @@ export interface InvoiceOutput {
 }
 
 export interface ReviewData {
+  /** The review screen routes on these: a USA document renders the SO/SA form. */
+  country?: Country;
+  doc_type?: UsDocType | null;
   document_id: string;
   status: string;
   filename?: string | null;
@@ -144,6 +150,7 @@ export interface ReviewData {
 }
 
 export interface UploadResponse {
+  country?: Country;
   document_id: string;
   filename: string;
   status: string;
@@ -167,6 +174,10 @@ export interface SourceMetadata {
 }
 
 export interface Document {
+  /** Extraction regime. Absent on rows written before the column existed. */
+  country?: Country;
+  /** USA documents only: the classified type. */
+  doc_type?: UsDocType | null;
   id: string;
   filename: string;
   status: string;

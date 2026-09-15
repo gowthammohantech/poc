@@ -3,7 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Bot, FileSearch, ArrowRight, LogOut, Landmark } from "lucide-react";
+
+import CountrySelector from "@/components/CountrySelector";
+import { useCountry } from "@/components/useCountry";
+import { hydrateCountryFromStorage } from "@/lib/country";
 
 interface Agent {
   id: string;
@@ -15,12 +20,25 @@ interface Agent {
   badgeColor: string;
 }
 
-const AGENTS: Agent[] = [
-  {
-    id: "invoice-ocr",
+// The document agent describes whichever regime is selected. Everything else
+// on the hub is country-neutral.
+const DOCUMENT_AGENT: Record<"INDIA" | "USA", Pick<Agent, "name" | "description">> = {
+  INDIA: {
     name: "Invoice OCR Agent",
     description:
       "Extracts structured data from invoice PDFs and images. Runs OCR, parses fields, validates math, and stores results in a local database.",
+  },
+  USA: {
+    name: "US Order & Release Agent",
+    description:
+      "Reads US purchase orders and shipping authorizations. Detects which it is, extracts the order lines or the weekly delivery schedule, and checks the arithmetic.",
+  },
+};
+
+const AGENTS: Agent[] = [
+  {
+    id: "invoice-ocr",
+    ...DOCUMENT_AGENT.INDIA,
     href: "/agents/invoice-ocr",
     icon: FileSearch,
     color: "from-violet-500 to-indigo-600",
@@ -45,6 +63,16 @@ const COMING_SOON = [
 
 export default function AgentHubPage() {
   const router = useRouter();
+  const { country } = useCountry();
+
+  // The hub bypasses AppLayout, so it reads the saved country itself.
+  useEffect(() => {
+    hydrateCountryFromStorage();
+  }, []);
+
+  const agents = AGENTS.map((agent) =>
+    agent.id === "invoice-ocr" ? { ...agent, ...DOCUMENT_AGENT[country] } : agent
+  );
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -68,13 +96,16 @@ export default function AgentHubPage() {
             Agent Sandbox
           </span>
         </div>
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          Sign out
-        </button>
+        <div className="flex items-center gap-4">
+          <CountrySelector />
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </button>
+        </div>
       </header>
 
       {/* Hero */}
@@ -94,7 +125,7 @@ export default function AgentHubPage() {
       <div className="px-8 pb-6 max-w-5xl mx-auto w-full">
         <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Active</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {AGENTS.map((agent) => {
+          {agents.map((agent) => {
             const Icon = agent.icon;
             return (
               <Link
