@@ -218,3 +218,13 @@ mastra-service/      Mastra AI agents + workflows
     schemas/         Zod invoice schema
     workflows/       invoiceProcessingWorkflow
 ```
+
+
+
+cd apps/backend && .venv/bin/python -m uvicorn app.main:app --reload --port 8000
+
+
+cd mastra-service && npm run dev
+
+
+cd apps/web && npm run dev
