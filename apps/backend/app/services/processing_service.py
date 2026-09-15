@@ -10,7 +10,9 @@ from starlette.concurrency import run_in_threadpool
 
 from app.services import document_service as docs
 from app.services import mastra_client
+from app.services import us_mastra_client
 from app.services.ocr_service import run_ocr_with_fallback
+from app.services.validation_rulesets import COUNTRY_USA, get_ruleset
 from app.services.validation_service import run_all_rules, determine_validation_status
 
 
@@ -34,6 +36,9 @@ async def run_processing_pipeline(document_id: str) -> dict:
 
     preprocessed_paths = [p["preprocessed_path"] or p["original_path"] for p in pages]
     complexity_reasons = json.loads(doc["complexity_reasons"] or "[]") if doc.get("complexity_reasons") else []
+
+    if (doc.get("country") or "INDIA").upper() == COUNTRY_USA:
+        return await _run_us_pipeline(document_id, doc, pages)
 
     # Step 1: OCR Routing via Mastra
     await docs.update_document_status(document_id, "ROUTING")
@@ -218,4 +223,148 @@ async def run_processing_pipeline(document_id: str) -> dict:
         "ocr_engine": final_engine,
         "processing_mode": processing_mode,
         "message": "Processing complete. Review the invoice data.",
+    }
+
+
+async def _run_us_pipeline(document_id: str, doc: dict, pages: list) -> dict:
+    """OCR → classify → extract → validate, for a US purchase order or release.
+
+    Kept as its own function rather than a set of conditionals threaded through
+    the India body above: the two regimes share the persistence calls and
+    nothing else, and a regression in the India path is the expensive kind.
+
+    Three deliberate differences from the India pipeline:
+
+      * The router agent is skipped and vision is always used. Both US
+        documents are dense tables whose meaning lives in the column a number
+        sits in, and Tesseract runs --psm 6, which reads a grid as one
+        paragraph and throws that away. A misread digit on an order line is
+        also unrecoverable arithmetic rather than a typo.
+      * The page images sent to the agent are the originals, not the
+        preprocessed ones. Preprocessing binarises for Tesseract's benefit,
+        which on a wide table can thin out the hairline rules that carry the
+        column alignment.
+      * There is no vision-retry-on-INVALID leg. That exists to escalate a
+        local-OCR result to vision; this path already started there.
+    """
+    original_paths = [p["original_path"] for p in pages if p.get("original_path")]
+    ocr_paths = [p["preprocessed_path"] or p["original_path"] for p in pages]
+    vision_paths = original_paths or ocr_paths
+
+    final_engine = "OPENAI_VISION_LLM"
+    processing_mode = "DIRECT_LLM_WITH_OCR_REFERENCE"
+
+    await docs.update_document_status(document_id, "ROUTING")
+    await docs.update_document_status(document_id, "ROUTED", ocr_engine=final_engine)
+    await docs.log_step(
+        document_id, "ROUTING", "SUCCESS",
+        f"Engine: {final_engine}, Reason: US documents are wide tables where "
+        f"column position carries the meaning; routed to vision regardless of score",
+    )
+
+    # Tesseract runs for two reasons that both survive its poor grasp of the
+    # layout: it gives the review screen its word boxes, and its text is a
+    # useful second opinion on a digit the model is unsure of.
+    ocr_text = ""
+    await docs.update_document_status(document_id, "OCR_RUNNING")
+    try:
+        ocr_result, ocr_engine = await run_in_threadpool(
+            run_ocr_with_fallback, "TESSERACT", ocr_paths
+        )
+        ocr_text = ocr_result.get("text", "") or ""
+        await docs.save_ocr_result(
+            document_id, ocr_engine, ocr_text,
+            ocr_result.get("confidence", 0), ocr_result.get("word_count", 0),
+            ocr_result.get("metadata", {}),
+        )
+        await docs.log_step(document_id, "OCR", "SUCCESS",
+                            f"Reference text from {ocr_engine}: {len(ocr_text)} chars")
+    except Exception as e:
+        await docs.log_step(document_id, "OCR", "WARNING",
+                            f"Reference OCR failed, continuing with images only: {e}")
+
+    # Classify, unless a reviewer already told us what this is and re-processed.
+    doc_type = doc.get("doc_type")
+    if not doc_type:
+        await docs.update_document_status(document_id, "CLASSIFYING")
+        classification = await us_mastra_client.call_us_doc_classifier({
+            "document_id": document_id,
+            "page_image_paths": vision_paths,
+            "ocr_text": ocr_text,
+        })
+        doc_type = classification.get("document_type", us_mastra_client.DOC_TYPE_UNKNOWN)
+        await docs.update_document_status(document_id, "CLASSIFIED", doc_type=doc_type)
+        await docs.log_step(
+            document_id, "US_CLASSIFY", "SUCCESS",
+            f"Type: {doc_type} (confidence {classification.get('confidence', 0)}). "
+            f"{classification.get('reason', '')}",
+        )
+
+    await docs.update_document_status(document_id, "EXTRACTING")
+    extraction_payload = {
+        "document_id": document_id,
+        "page_image_paths": vision_paths,
+        "ocr_text": ocr_text,
+        "expected_fields": doc.get("expected_fields", ""),
+    }
+    # An unclassified document is read as a purchase order: that degrades to a
+    # mostly-empty form a reviewer can correct, rather than a matrix whose
+    # columns are silently misaligned.
+    if doc_type == us_mastra_client.DOC_TYPE_SA:
+        raw = await us_mastra_client.call_us_sa_vision_agent(extraction_payload)
+    else:
+        raw = await us_mastra_client.call_us_so_vision_agent(extraction_payload)
+
+    document_json = us_mastra_client.normalize_us_payload(raw, doc_type, document_id)
+    document_json.setdefault("metadata", {})
+    document_json["metadata"].update({
+        "ocr_engine": final_engine,
+        "processing_mode": processing_mode,
+        "complexity_score": doc.get("complexity_score"),
+        "pages": len(pages),
+        "country": COUNTRY_USA,
+        "document_type": doc_type,
+    })
+    confidence_json = document_json.get("confidence", {})
+
+    await docs.save_extraction_result(document_id, document_json, confidence_json)
+    await docs.update_document_status(document_id, "EXTRACTED",
+                                      ocr_engine=final_engine, processing_mode=processing_mode)
+    await docs.log_step(document_id, "EXTRACTION", "SUCCESS",
+                        f"Extracted as {doc_type} via {final_engine}")
+
+    await docs.update_document_status(document_id, "VALIDATING")
+    ruleset = get_ruleset(COUNTRY_USA, doc_type)
+    rule_checks = ruleset.run(document_json)
+    llm_val = await us_mastra_client.call_us_validation_agent({
+        "document_id": document_id,
+        "document_type": doc_type,
+        "document_json": document_json,
+    })
+    llm_checks = llm_val.get("llm_checks", [])
+    warnings, errors = ruleset.partition_messages(rule_checks)
+    warnings = warnings + llm_val.get("warnings", [])
+    val_status = ruleset.determine_status(rule_checks, llm_checks)
+
+    rule_checks_dicts = [c.dict() for c in rule_checks]
+    await docs.save_validation_result(document_id, val_status, rule_checks_dicts,
+                                      llm_checks, warnings, errors)
+    document_json["validation"] = {
+        "status": val_status,
+        "rule_checks": rule_checks_dicts,
+        "llm_checks": llm_checks,
+        "warnings": warnings,
+        "errors": errors,
+    }
+    await docs.save_extraction_result(document_id, document_json, confidence_json)
+    await docs.update_document_status(document_id, val_status)
+    await docs.log_step(document_id, "VALIDATION", "SUCCESS", f"Status: {val_status}")
+
+    return {
+        "document_id": document_id,
+        "status": val_status,
+        "doc_type": doc_type,
+        "ocr_engine": final_engine,
+        "processing_mode": processing_mode,
+        "message": f"US {doc_type} processing complete. Status: {val_status}",
     }

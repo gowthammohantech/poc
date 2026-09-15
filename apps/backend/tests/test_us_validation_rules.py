@@ -215,3 +215,25 @@ class TestPurchaseOrderRules:
         rules = " ".join(c.rule for c in run_so_rules(_so()) + run_sa_rules(_sa()))
         for india_only in ("gstin", "hsn", "cgst", "sgst", "igst", "ifsc", "pan"):
             assert india_only not in rules
+
+
+class TestRepairDoesNotHideMisalignment:
+    """us_mastra_client pads a ragged row so the grid renders; the rule must still fail."""
+
+    def test_a_padded_row_still_fails_the_width_check(self):
+        payload = _sa(parts=[{
+            "part_number": "1434080B",
+            "quantities": [0, 0, 0, None],
+            "quantities_repaired": "padded from 3 to 4",
+        }])
+        check = _checks_by_rule(run_sa_rules(payload))["sa_schedule_width_match"]
+        assert not check.passed
+        assert "padded from 3 to 4" in check.message
+
+    def test_a_trimmed_row_still_fails_the_width_check(self):
+        payload = _sa(parts=[{
+            "part_number": "1434080B",
+            "quantities": [0, 0, 0, 0],
+            "quantities_repaired": "trimmed from 6 to 4",
+        }])
+        assert not _checks_by_rule(run_sa_rules(payload))["sa_schedule_width_match"].passed

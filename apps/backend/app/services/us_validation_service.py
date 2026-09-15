@@ -128,19 +128,27 @@ def _validate_sa_parts(doc: dict) -> List[RuleCheck]:
     # The quantities array is positional: index i is the quantity for
     # schedule_columns[i]. A row of the wrong width means every quantity after
     # the gap is attributed to the wrong week, so this is fatal, not cosmetic.
-    mismatched = [
-        (i, len(p.get("quantities") or []))
-        for i, p in enumerate(parts)
-        if len(p.get("quantities") or []) != column_count
-    ]
+    #
+    # us_mastra_client pads or trims a ragged row so the review grid can render
+    # it, and leaves a quantities_repaired note behind when it does. That note
+    # counts as a mismatch here: repairing the shape must not hide the fact
+    # that the model lost track of the columns.
+    mismatched = []
+    for i, part in enumerate(parts):
+        repaired = part.get("quantities_repaired")
+        if repaired:
+            mismatched.append(f"row {i + 1} was {repaired}")
+        elif len(part.get("quantities") or []) != column_count:
+            mismatched.append(
+                f"row {i + 1} has {len(part.get('quantities') or [])} of {column_count}")
+
     checks.append(RuleCheck(
         rule="sa_schedule_width_match",
         passed=not mismatched,
         message=(
             f"All {len(parts)} part row(s) span {column_count} bucket(s)"
             if not mismatched else
-            "Part row(s) do not line up with the schedule header: "
-            + ", ".join(f"row {i + 1} has {n} of {column_count}" for i, n in mismatched)
+            "Part row(s) do not line up with the schedule header: " + ", ".join(mismatched)
         ),
         field="parts",
     ))
