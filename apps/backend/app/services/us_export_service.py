@@ -60,7 +60,7 @@ def build_us_export_json(final_output: Dict[str, Any], document: Dict[str, Any])
     """
     corrected = dict(final_output.get("corrected_json", {}) or {})
     corrected["country"] = document.get("country") or "USA"
-    corrected["document_type"] = document.get("doc_type")
+    corrected["document_type"] = resolve_doc_type(final_output, document)
     return corrected
 
 
@@ -319,6 +319,19 @@ def build_so_export_excel(final_output: Dict[str, Any]) -> bytes:
 
 
 # --------------------------------------------------------------------------
+
+def resolve_doc_type(final_output: Dict[str, Any], document: Dict[str, Any]) -> Optional[str]:
+    """Which builder to use, preferring what the reviewed payload says it is.
+
+    The documents row carries the classifier's answer, which can be UNKNOWN or
+    simply wrong. The corrected payload has been through a human, so its own
+    document_type wins when it has one.
+    """
+    payload_type = _document(final_output).get("document_type")
+    if isinstance(payload_type, str) and payload_type.strip().upper() in {DOC_TYPE_SA, "SO"}:
+        return payload_type.strip().upper()
+    return document.get("doc_type")
+
 
 def build_us_export_csv(final_output: Dict[str, Any], doc_type: Optional[str]) -> str:
     if (doc_type or "").upper() == DOC_TYPE_SA:

@@ -218,3 +218,31 @@ class TestDispatch:
         assert exported["country"] == "USA"
         assert exported["document_type"] == "SA"
         assert exported["invoice"]["supplier"]["code"] == "4283"
+
+
+class TestDocTypeResolution:
+    """The reviewed payload knows better than the classifier's stored guess."""
+
+    def test_the_payload_type_wins_over_an_unknown_row(self):
+        from app.services.us_export_service import resolve_doc_type
+        assert resolve_doc_type(_final(_sa_document()), {"doc_type": "UNKNOWN"}) == "SA"
+
+    def test_the_payload_type_wins_over_a_wrong_row(self):
+        from app.services.us_export_service import resolve_doc_type
+        assert resolve_doc_type(_final(_sa_document()), {"doc_type": "SO"}) == "SA"
+
+    def test_the_row_is_used_when_the_payload_says_nothing(self):
+        from app.services.us_export_service import resolve_doc_type
+        document = _sa_document()
+        document.pop("document_type")
+        assert resolve_doc_type(_final(document), {"doc_type": "SA"}) == "SA"
+
+    def test_a_junk_payload_type_falls_back_to_the_row(self):
+        from app.services.us_export_service import resolve_doc_type
+        document = dict(_sa_document(), document_type="INVOICE")
+        assert resolve_doc_type(_final(document), {"doc_type": "SA"}) == "SA"
+
+    def test_a_reviewed_release_exports_as_a_release(self):
+        from app.services.us_export_service import build_us_export_csv, resolve_doc_type
+        final, row = _final(_sa_document()), {"country": "USA", "doc_type": "UNKNOWN"}
+        assert "Delivery Schedule" in build_us_export_csv(final, resolve_doc_type(final, row))
