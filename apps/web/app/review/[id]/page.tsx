@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getReview, submitReview, getExportUrl, getDocuments } from "@/lib/api";
 import PagePreview from "@/components/PagePreview";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
+import { Field, NavArrow, inputCls, tdInputCls } from "@/components/review/ReviewPrimitives";
 import { SkeletonBar } from "@/components/Skeleton";
 import type { ReviewData, InvoiceData, Document } from "@/types/invoice";
 
@@ -34,12 +34,19 @@ export default function ReviewPage() {
     setSubmitMsg("");
     getReview(id as string)
       .then((data) => {
+        // A US document has a different shape entirely. Redirecting on the
+        // document's own country, rather than on the selector, means a
+        // bookmark or a link from anywhere still lands on the right form.
+        if ((data.country ?? "INDIA") === "USA") {
+          router.replace(`/us-review/${id}${window.location.search}`);
+          return;
+        }
         setReview(data);
         reset(data.invoice);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [id, reset]);
+  }, [id, reset, router]);
 
   // Sibling invoices, in the same order the documents list shows them, so the
   // arrows walk the list the user came from.
@@ -510,59 +517,6 @@ export default function ReviewPage() {
           </form>
         </div>
       </div>
-    </div>
-  );
-}
-
-function NavArrow({
-  side,
-  disabled,
-  onClick,
-  label,
-}: {
-  side: "left" | "right";
-  disabled: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  const Icon = side === "left" ? ChevronLeft : ChevronRight;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className={`fixed ${side === "left" ? "left-2" : "right-2"} top-1/2 -translate-y-1/2 z-30 h-10 w-10 flex items-center justify-center rounded-full border border-gray-300 bg-white/90 text-gray-600 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white/90`}
-    >
-      <Icon className="w-5 h-5" />
-    </button>
-  );
-}
-
-const inputCls = "w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500";
-const tdInputCls = "w-full border border-gray-200 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[60px]";
-
-function Field({
-  label,
-  children,
-  badge,
-  isError,
-  colSpan,
-}: {
-  label: string;
-  children: React.ReactNode;
-  badge?: React.ReactNode;
-  isError?: boolean;
-  colSpan?: boolean;
-}) {
-  return (
-    <div className={colSpan ? "col-span-2" : ""}>
-      <label className={`block text-xs font-medium mb-1 flex items-center gap-1 ${isError ? "text-red-600" : "text-gray-600"}`}>
-        {label} {badge}
-      </label>
-      {children}
-      {isError && <p className="text-xs text-red-500 mt-0.5">Validation error</p>}
     </div>
   );
 }
