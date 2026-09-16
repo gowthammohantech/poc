@@ -11,8 +11,29 @@ from pathlib import Path
 
 from app.services.connectors.base import ConnectorError, MailAttachmentRef, OAuthTokens
 
-_SAMPLE_DIR = Path(os.getenv("CONNECTOR_FAKE_DIR", "")) if os.getenv("CONNECTOR_FAKE_DIR") else \
-    Path(__file__).resolve().parents[5] / "invoices"
+
+def _default_sample_dir() -> Path:
+    """Find the repo's invoices/ folder by walking up from this file.
+
+    A checkout nests this module five levels below the repo root, but the
+    container image copies apps/backend to /app, so it sits shallower there and
+    counting parents runs off the top of the tree. When no such folder exists
+    anywhere above us, return a path that simply isn't there — is_configured()
+    then reports the connector as unavailable, which is the intended behaviour.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "invoices"
+        if candidate.is_dir():
+            return candidate
+    return here.parent / "invoices"
+
+
+_SAMPLE_DIR = (
+    Path(os.getenv("CONNECTOR_FAKE_DIR"))
+    if os.getenv("CONNECTOR_FAKE_DIR")
+    else _default_sample_dir()
+)
 
 _MIME_BY_SUFFIX = {
     ".pdf": "application/pdf",
