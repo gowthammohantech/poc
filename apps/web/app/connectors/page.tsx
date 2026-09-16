@@ -26,6 +26,8 @@ import {
   updateConnectorFilters,
 } from "@/lib/api";
 import { SkeletonBar } from "@/components/Skeleton";
+import { useCountry } from "@/components/useCountry";
+import { COUNTRIES, countryLabel, normalizeCountry, type Country } from "@/lib/country";
 import type {
   ConnectorConnection,
   ConnectorProvider,
@@ -54,6 +56,7 @@ function statusPill(status: string) {
 function ConnectorsPage() {
   const router = useRouter();
   const params = useSearchParams();
+  const { country } = useCountry();
 
   const [providers, setProviders] = useState<ConnectorProvider[]>([]);
   const [connections, setConnections] = useState<ConnectorConnection[]>([]);
@@ -90,7 +93,9 @@ function ConnectorsPage() {
 
   async function handleConnect(provider: string) {
     try {
-      const { authorization_url } = await startConnectorOAuth(provider);
+      // A new mailbox is connected for whichever regime the user is working
+      // in; everything it pulls is then processed under that one.
+      const { authorization_url } = await startConnectorOAuth(provider, country);
       window.location.href = authorization_url;
     } catch (err) {
       setNotice({ kind: "error", text: describe(err) });
@@ -105,7 +110,8 @@ function ConnectorsPage() {
           <p className="mt-1 text-sm text-gray-600">
             Pull invoices straight out of a mailbox. Attachments are processed by the same
             OCR and extraction pipeline as manual uploads, and appear in{" "}
-            <Link href="/documents" className="text-blue-600 hover:underline">Documents</Link>.
+            <Link href="/documents" className="text-blue-600 hover:underline">Documents</Link>{" "}
+            under the country the connection is set to.
           </p>
         </div>
 
@@ -193,7 +199,12 @@ function ProviderCard({
           <div>
             <p className="font-medium text-gray-900">{provider.label}</p>
             {connected ? (
-              <p className="text-sm text-gray-600">{connection?.account_email}</p>
+              <p className="text-sm text-gray-600">
+                {connection?.account_email}
+                <span className="ml-2 text-xs text-gray-500">
+                  → {countryLabel(normalizeCountry(connection?.country))} documents
+                </span>
+              </p>
             ) : provider.enabled ? (
               <p className="text-sm text-gray-500">
                 {provider.configured
@@ -251,6 +262,7 @@ function ConnectedPanel({
   onError: (text: string) => void;
 }) {
   const [folders, setFolders] = useState<MailFolder[]>([]);
+  const [country, setCountry] = useState<Country>(normalizeCountry(connection.country));
   const [label, setLabel] = useState(connection.filter_label ?? "");
   const [query, setQuery] = useState(connection.filter_query ?? "has:attachment");
   const [maxMessages, setMaxMessages] = useState(connection.max_messages_per_sync ?? 25);
@@ -276,6 +288,7 @@ function ConnectedPanel({
     setSaved(false);
     try {
       await updateConnectorFilters(connection.id, {
+        country,
         filter_label: label || null,
         filter_label_name: folders.find((f) => f.id === label)?.name ?? null,
         filter_query: query,
@@ -343,7 +356,19 @@ function ConnectedPanel({
     <div className="mt-5 border-t pt-4 space-y-4">
       <SyncStats connection={connection} stats={stats} run={run} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Process as</label>
+          <select
+            value={country}
+            onChange={(e) => setCountry(normalizeCountry(e.target.value))}
+            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c.key} value={c.key}>{c.label}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Folder / label</label>
           <select
@@ -378,6 +403,13 @@ function ConnectedPanel({
           />
         </div>
       </div>
+
+      {country !== normalizeCountry(connection.country) && (
+        <p className="text-xs text-amber-700">
+          Save filters to move this mailbox to {countryLabel(country)}; a sync started now
+          still files its documents under {countryLabel(normalizeCountry(connection.country))}.
+        </p>
+      )}
 
       <div className="flex items-center gap-2 flex-wrap">
         <button

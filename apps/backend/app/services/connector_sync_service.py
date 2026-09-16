@@ -352,9 +352,9 @@ async def run_sync(run_id: str, connection_id: str):
                         content=content,
                         mime_type=ref.mime_type,
                         source=ingest_service.SOURCE_CONNECTOR,
-                        # Mailbox connections have no country of their own yet,
-                        # so everything they pull runs the India pipeline.
-                        country=ingest_service.COUNTRY_INDIA,
+                        # The regime chosen for this mailbox: its attachments
+                        # run the India invoice pipeline or the US one.
+                        country=connector_service.connection_country(connection),
                         source_connector_id=connection_id,
                         source_ref=ref.source_ref,
                         source_metadata={

@@ -11,6 +11,7 @@ from app.db.database import get_db
 from app.services import crypto_service
 from app.services.connectors import ConnectorAuthError, ConnectorError, get_connector
 from app.services.connectors.base import OAuthTokens
+from app.services.ingest_service import COUNTRY_INDIA, normalize_country
 
 STATE_TTL_MINUTES = 10
 REFRESH_MARGIN_SECONDS = 120
@@ -39,6 +40,14 @@ def redirect_uri(provider: str) -> str:
         return configured
     base = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000").rstrip("/")
     return f"{base}/api/connectors/{provider.lower()}/oauth/callback"
+
+
+def connection_country(connection: dict) -> str:
+    """The regime a connection's attachments are processed under.
+
+    Rows written before the column existed carry NULL, which is India.
+    """
+    return normalize_country(connection.get("country") or COUNTRY_INDIA)
 
 
 def public_view(row: dict) -> dict:
@@ -103,6 +112,9 @@ async def is_already_ingested(connection_id: str, source_ref: str) -> Optional[d
 async def update_connection(connection_id: str, **fields):
     if not fields:
         return
+    # An unrecognised country would send the attachments down neither pipeline.
+    if "country" in fields:
+        fields["country"] = normalize_country(fields["country"])
     fields["updated_at"] = _now()
     assignments = ", ".join(f"{key} = ?" for key in fields)
     async with get_db() as db:
@@ -113,8 +125,13 @@ async def update_connection(connection_id: str, **fields):
         await db.commit()
 
 
-async def begin_oauth(provider: str) -> tuple[str, str]:
-    """Create a pending connection and return (connection_id, authorization_url)."""
+async def begin_oauth(provider: str, country: Optional[str] = None) -> tuple[str, str]:
+    """Create a pending connection and return (connection_id, authorization_url).
+
+    The country is fixed at connect time from whichever regime the user is
+    working in, and everything the mailbox later pulls is processed under it.
+    It stays editable on the connection afterwards.
+    """
     provider = provider.upper()
     connector = get_connector(provider)
     if not connector.is_configured():
@@ -129,11 +146,12 @@ async def begin_oauth(provider: str) -> tuple[str, str]:
     async with get_db() as db:
         await db.execute(
             """INSERT INTO connector_connections
-               (id, provider, status, oauth_state, oauth_state_created_at,
+               (id, provider, country, status, oauth_state, oauth_state_created_at,
                 scopes, filter_query, max_messages_per_sync, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                connection_id, provider, STATUS_PENDING, state, now,
+                connection_id, provider, normalize_country(country),
+                STATUS_PENDING, state, now,
                 " ".join(connector.default_scopes), "has:attachment",
                 int(os.getenv("CONNECTOR_MAX_MESSAGES_PER_SYNC", "25")), now, now,
             ),

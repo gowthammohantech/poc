@@ -99,6 +99,12 @@ Attachments pulled from a mailbox go through exactly the same OCR and extraction
 pipeline as manual uploads. A sync runs in the background and is reported by
 polling, since processing a mailbox takes minutes.
 
+Each connection carries a country — set from the country selector when it is
+connected, and changeable afterwards under **Process as** on the connector card.
+Everything that mailbox pulls is extracted under that regime and appears in
+`/documents` with that country selected, so a mailbox of purchase orders is
+connected as United States rather than India.
+
 ### Try it without a Google account
 
 A **Sample Mailbox** provider is always listed at `/connectors` next to Gmail,
@@ -121,6 +127,13 @@ One-time setup in [Google Cloud Console](https://console.cloud.google.com):
    `http://localhost:8000/api/connectors/gmail/oauth/callback`. This must match
    exactly — a mismatch is the usual cause of `redirect_uri_mismatch`.
 7. Copy the client ID and secret into `apps/backend/.env`.
+
+Deployed, the redirect URI is the **backend's** public URL, not the frontend's —
+`https://<backend-host>/api/connectors/gmail/oauth/callback` — and it has to be
+added to the same Google client alongside the localhost one. Set
+`GOOGLE_OAUTH_REDIRECT_URI`, `BACKEND_PUBLIC_URL` and `FRONTEND_URL` on the
+backend service to match; `FRONTEND_URL` is where the callback sends the browser
+back to, so a stale one lands the user on localhost after consent.
 
 While the consent screen stays in **Testing**, Google expires refresh tokens after
 seven days, so the connection will ask to be re-authorised about weekly. That is

@@ -165,8 +165,8 @@ export async function getConnectors() {
   return data;
 }
 
-export async function startConnectorOAuth(provider: string) {
-  const { data } = await api.post(`/api/connectors/${provider}/oauth/start`);
+export async function startConnectorOAuth(provider: string, country?: string) {
+  const { data } = await api.post(`/api/connectors/${provider}/oauth/start`, { country });
   return data as { connection_id: string; authorization_url: string };
 }
 
@@ -178,6 +178,7 @@ export async function getConnectorFolders(connectionId: string) {
 export async function updateConnectorFilters(
   connectionId: string,
   filters: {
+    country?: string | null;
     filter_label?: string | null;
     filter_label_name?: string | null;
     filter_query?: string | null;

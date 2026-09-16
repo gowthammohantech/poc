@@ -9,12 +9,19 @@ class ProviderResponse(BaseModel):
     enabled: bool
 
 
+class OAuthStartRequest(BaseModel):
+    """Which regime the mailbox is being connected for; defaults to India."""
+
+    country: Optional[str] = None
+
+
 class OAuthStartResponse(BaseModel):
     connection_id: str
     authorization_url: str
 
 
 class FilterUpdate(BaseModel):
+    country: Optional[str] = None
     filter_label: Optional[str] = None
     filter_label_name: Optional[str] = None
     filter_query: Optional[str] = None

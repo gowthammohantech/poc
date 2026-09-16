@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS connector_connections (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,                     -- 'GMAIL' | 'OUTLOOK' | 'FAKE'
     account_email TEXT,
+    country TEXT NOT NULL DEFAULT 'INDIA',      -- extraction regime for what it pulls: INDIA|USA
     status TEXT NOT NULL DEFAULT 'PENDING',     -- PENDING|CONNECTED|NEEDS_REAUTH|ERROR|DISCONNECTED
     access_token TEXT,                          -- ciphertext
     refresh_token TEXT,                         -- ciphertext

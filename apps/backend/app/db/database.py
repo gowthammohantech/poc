@@ -27,6 +27,11 @@ _COLUMN_ADDITIONS: dict[str, list[tuple[str, str]]] = {
         # US documents only: SO (purchase order) or SA (shipping authorization).
         ("doc_type", "TEXT"),
     ],
+    "connector_connections": [
+        # Which pipeline the attachments this mailbox pulls are run through.
+        # Connections made before the country dimension existed were all India.
+        ("country", "TEXT NOT NULL DEFAULT 'INDIA'"),
+    ],
     "connector_sync_runs": [
         ("messages_with_attachments", "INTEGER DEFAULT 0"),
         ("skipped_inline", "INTEGER DEFAULT 0"),
@@ -42,6 +47,7 @@ _POST_ALTER_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source)",
     "UPDATE documents SET country = 'INDIA' WHERE country IS NULL",
     "CREATE INDEX IF NOT EXISTS idx_documents_country ON documents(country)",
+    "UPDATE connector_connections SET country = 'INDIA' WHERE country IS NULL",
 ]
 
 

@@ -18,6 +18,8 @@ export interface ConnectorConnection {
   id: string;
   provider: string;
   account_email: string | null;
+  /** Which pipeline this mailbox's attachments are processed under. */
+  country: string;
   status: ConnectionStatus;
   token_expires_at: string | null;
   scopes: string | null;

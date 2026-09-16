@@ -6,6 +6,7 @@ from fastapi.responses import RedirectResponse
 
 from app.schemas.connector_schema import (
     FilterUpdate,
+    OAuthStartRequest,
     OAuthStartResponse,
     ProviderResponse,
     SyncStartResponse,
@@ -36,9 +37,11 @@ async def list_connections():
 
 
 @router.post("/{provider}/oauth/start", response_model=OAuthStartResponse)
-async def start_oauth(provider: str):
+async def start_oauth(provider: str, payload: OAuthStartRequest | None = None):
     try:
-        connection_id, url = await connector_service.begin_oauth(provider)
+        connection_id, url = await connector_service.begin_oauth(
+            provider, country=payload.country if payload else None
+        )
     except ConnectorError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return OAuthStartResponse(connection_id=connection_id, authorization_url=url)
