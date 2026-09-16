@@ -2,7 +2,9 @@ FROM node:22-slim
 
 WORKDIR /app/apps/web
 
-COPY package.json package-lock.json ./
+# This branch keeps a single lockfile at the workspace root, so the web app is
+# installed standalone from its own package.json.
+COPY package.json ./
 RUN npm install
 
 COPY . ./

@@ -1,0 +1,12 @@
+.venv
+.git
+.env
+.pytest_cache
+__pycache__
+*.pyc
+*.db
+*.db.*-bak
+*.db.bak-before-delete
+storage
+Dockerfile
+.dockerignore

@@ -3,13 +3,14 @@
   "build": {
     "builder": "DOCKERFILE",
     "watchPatterns": [
-      "/apps/web/**"
+      "/apps/backend/**"
     ]
   },
   "deploy": {
-    "startCommand": "npm run start",
-    "healthcheckPath": "/login",
-    "healthcheckTimeout": 100,
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

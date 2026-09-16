@@ -1,0 +1,7 @@
+node_modules
+.mastra
+.git
+.env
+*.log
+Dockerfile
+.dockerignore
