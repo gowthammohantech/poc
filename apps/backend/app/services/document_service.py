@@ -53,9 +53,35 @@ async def get_document(document_id: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
+# The number a reader knows a document by: an India invoice's invoice number,
+# a US purchase order's order number, a US shipping authorization's release
+# number. Only one of the three is ever present on a given payload.
+_DOCUMENT_NUMBER_KEYS = ("invoice_number", "order_number", "release_number")
+
+
+def _document_number_sql(json_column: str) -> str:
+    return "COALESCE(" + ", ".join(
+        f"NULLIF(TRIM(json_extract({json_column}, '$.invoice.{key}')), '')"
+        for key in _DOCUMENT_NUMBER_KEYS
+    ) + ")"
+
+
 async def get_all_documents() -> list:
+    """Every document, newest first, with its `document_number`.
+
+    A reviewer's correction wins over what extraction read, so a number fixed
+    on the review screen is the one the list shows.
+    """
     async with get_db() as db:
-        cursor = await db.execute("SELECT * FROM documents ORDER BY created_at DESC")
+        cursor = await db.execute(
+            f"""SELECT d.*, COALESCE(
+                   (SELECT {_document_number_sql('f.corrected_json')} FROM final_outputs f
+                     WHERE f.document_id = d.id ORDER BY f.submitted_at DESC LIMIT 1),
+                   (SELECT {_document_number_sql('e.invoice_json')} FROM extraction_results e
+                     WHERE e.document_id = d.id ORDER BY e.created_at DESC LIMIT 1)
+                 ) AS document_number
+                FROM documents d ORDER BY d.created_at DESC"""
+        )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 

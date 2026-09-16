@@ -125,7 +125,7 @@ function DocumentsPage() {
         </div>
 
         {loading ? (
-          <SkeletonTable columns={isUsa ? 9 : 8} rows={6} />
+          <SkeletonTable columns={isUsa ? 10 : 9} rows={6} />
         ) : loadError ? (
           <div className="bg-white rounded-xl border p-12 text-center">
             <p className="text-red-600 text-sm">{loadError}</p>
@@ -158,6 +158,9 @@ function DocumentsPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Filename</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-700">
+                    {isUsa ? "Order / Release No" : "Invoice No"}
+                  </th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Source</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
                   {isUsa && (
@@ -175,6 +178,9 @@ function DocumentsPage() {
                   <tr key={doc.id} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="py-3 px-4 font-medium text-gray-900 max-w-[200px] truncate">
                       {doc.filename}
+                    </td>
+                    <td className="py-3 px-4 text-gray-900 font-mono text-xs whitespace-nowrap">
+                      {doc.document_number || "-"}
                     </td>
                     <td className="py-3 px-4">
                       <SourceBadge doc={doc} />

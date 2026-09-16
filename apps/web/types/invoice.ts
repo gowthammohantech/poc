@@ -178,6 +178,8 @@ export interface Document {
   country?: Country;
   /** USA documents only: the classified type. */
   doc_type?: UsDocType | null;
+  /** Invoice number (India), order number (US SO) or release number (US SA). */
+  document_number?: string | null;
   id: string;
   filename: string;
   status: string;
