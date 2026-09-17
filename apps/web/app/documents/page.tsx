@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getDocuments } from "@/lib/api";
 import { useCountry } from "@/components/useCountry";
 import { normalizeCountry } from "@/lib/country";
@@ -25,6 +25,7 @@ function isSourceFilter(value: string | null): value is SourceFilter {
 
 function DocumentsPage() {
   const requested = useSearchParams().get("source");
+  const router = useRouter();
   const { country } = useCountry();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +86,14 @@ function DocumentsPage() {
     return `/${base}/${doc.id}?${params.toString()}`;
   };
 
+  // The whole row opens the review screen. Cmd/Ctrl-click keeps the usual
+  // "open in new tab" behaviour a plain link would have had.
+  const openReview = (doc: Document, e: React.MouseEvent | React.KeyboardEvent) => {
+    const href = reviewHref(doc);
+    if (e.metaKey || e.ctrlKey) window.open(href, "_blank");
+    else router.push(href);
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 py-10 px-6">
       <div className="max-w-5xl mx-auto">
@@ -125,7 +134,7 @@ function DocumentsPage() {
         </div>
 
         {loading ? (
-          <SkeletonTable columns={isUsa ? 10 : 9} rows={6} />
+          <SkeletonTable columns={isUsa ? 9 : 8} rows={6} />
         ) : loadError ? (
           <div className="bg-white rounded-xl border p-12 text-center">
             <p className="text-red-600 text-sm">{loadError}</p>
@@ -153,7 +162,7 @@ function DocumentsPage() {
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-white rounded-xl border overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
@@ -170,12 +179,20 @@ function DocumentsPage() {
                   <th className="text-left py-3 px-4 font-medium text-gray-700">OCR Engine</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Pages</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Created</th>
-                  <th className="py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody>
                 {visible.map((doc) => (
-                  <tr key={doc.id} className="border-b last:border-0 hover:bg-gray-50">
+                  <tr
+                    key={doc.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={(e) => openReview(doc, e)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") openReview(doc, e);
+                    }}
+                    className="border-b last:border-0 hover:bg-blue-50/50 cursor-pointer focus:outline-none focus-visible:bg-blue-50"
+                  >
                     <td className="py-3 px-4 font-medium text-gray-900 max-w-[200px] truncate">
                       {doc.filename}
                     </td>
@@ -215,16 +232,8 @@ function DocumentsPage() {
                       {doc.ocr_engine || "-"}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{doc.page_count}</td>
-                    <td className="py-3 px-4 text-gray-400 text-xs">
+                    <td className="py-3 px-4 text-gray-400 text-xs whitespace-nowrap">
                       {new Date(doc.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <a
-                        href={reviewHref(doc)}
-                        className="text-blue-600 hover:underline text-xs"
-                      >
-                        Review →
-                      </a>
                     </td>
                   </tr>
                 ))}
