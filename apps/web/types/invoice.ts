@@ -131,7 +131,7 @@ export interface InvoiceOutput {
 }
 
 export interface ReviewData {
-  /** The review screen routes on these: a USA document renders the SO/SA form. */
+  /** The review screen routes on these: a USA document renders the SO/SA/INV form. */
   country?: Country;
   doc_type?: UsDocType | null;
   document_id: string;
@@ -178,7 +178,7 @@ export interface Document {
   country?: Country;
   /** USA documents only: the classified type. */
   doc_type?: UsDocType | null;
-  /** Invoice number (India), order number (US SO) or release number (US SA). */
+  /** Invoice number (India, US INV), order number (US SO) or release number (US SA). */
   document_number?: string | null;
   id: string;
   filename: string;

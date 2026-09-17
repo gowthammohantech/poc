@@ -45,28 +45,28 @@ const COPY: Record<Country, RegimeCopy> = {
     ],
   },
   USA: {
-    heading: "US Order & Release Agent",
+    heading: "US Order, Release & Invoice Agent",
     blurb:
-      "Upload a US purchase order or shipping authorization. The agent works out which it is and extracts it accordingly.",
-    dropLabel: "Drag & drop your purchase order or release here, or click to browse",
+      "Upload a US purchase order, shipping authorization or invoice. The agent works out which it is and extracts it accordingly.",
+    dropLabel: "Drag & drop your purchase order, release or invoice here, or click to browse",
     expectedFieldsPlaceholder: "e.g., PO number: 33336, vendor: PIOLAX, supplier code: 4283",
     submitLabel: "Upload & Process Document",
     footerLink: "View all processed documents →",
     steps: [
       { step: 1, title: "Upload & Convert", desc: "PDF or image converted to page images" },
       { step: 2, title: "Reference OCR", desc: "Tesseract text kept as a second opinion on digits" },
-      { step: 3, title: "Type Detection", desc: "Classified as a purchase order (SO) or a release (SA)" },
-      { step: 4, title: "Extraction", desc: "Order lines, or the parts × week delivery schedule" },
-      { step: 5, title: "Validation", desc: "Line arithmetic and schedule alignment checked in code" },
+      { step: 3, title: "Type Detection", desc: "Classified as a purchase order (SO), a release (SA) or an invoice (INV)" },
+      { step: 4, title: "Extraction", desc: "Order or invoice lines, or the parts × week delivery schedule" },
+      { step: 5, title: "Validation", desc: "Line and invoice-total arithmetic, and schedule alignment, checked in code" },
       { step: 6, title: "Human Review", desc: "Reviewer confirms and exports results" },
     ],
     agents: [
       { icon: "🧭", name: "Document Classifier",
-        desc: "Tells a purchase order from a weekly delivery release by its layout" },
+        desc: "Tells a purchase order, a weekly delivery release and an invoice apart by their layout" },
       { icon: "🤖", name: "Extraction Agent",
-        desc: "Reads order lines, or the parts × week quantity grid, straight from the page images" },
+        desc: "Reads order or invoice lines, or the parts × week quantity grid, straight from the page images" },
       { icon: "✅", name: "Validation Agent",
-        desc: "Checks quantity × unit cost and that every quantity row lines up with the schedule" },
+        desc: "Checks quantity × price, that an invoice's totals reconcile, and that every quantity row lines up with the schedule" },
     ],
   },
 };
@@ -143,7 +143,7 @@ export default function InvoiceOcrPage() {
             // toggle that would do nothing.
             <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
               US documents are read directly from the page images, and whether this is a
-              purchase order or a shipping authorization is detected automatically.
+              purchase order, a shipping authorization or an invoice is detected automatically.
             </p>
           ) : (
             <div className="flex items-center gap-2">

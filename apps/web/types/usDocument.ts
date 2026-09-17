@@ -1,14 +1,15 @@
 /**
- * The two US document families.
+ * The three US document families.
  *
- * Neither is a tax invoice, so these do not extend the India invoice types:
- * an SA is a parts x week demand schedule with no money on it at all, and an
- * SO is a purchase order whose totals block is frequently absent.
+ * None is a GST tax invoice, so these do not extend the India invoice types:
+ * an SA is a parts x week demand schedule with no money on it at all, an SO is
+ * a purchase order whose totals block is frequently absent, and an INV is a
+ * supplier invoice with a single sales tax line, a remit-to and a balance due.
  */
 
 import type { OcrReference, Validation } from "./invoice";
 
-export type UsDocType = "SO" | "SA" | "UNKNOWN";
+export type UsDocType = "SO" | "SA" | "INV" | "UNKNOWN";
 
 export interface UsParty {
   name: string | null;
@@ -17,6 +18,8 @@ export interface UsParty {
   phone?: string | null;
   email?: string | null;
   contact: string | null;
+  /** INV vendor only: the EIN printed on the invoice. */
+  tax_id?: string | null;
 }
 
 /**
@@ -100,7 +103,59 @@ export interface UsSoData {
   notes: string[];
 }
 
-export type UsDocumentData = UsSaData | UsSoData;
+export interface UsInvLineItem {
+  line_number: number | null;
+  part_number: string | null;
+  description: string | null;
+  /** Printed only when the invoice shows ordered and shipped separately. */
+  quantity_ordered: number | null;
+  /** The quantity billed. */
+  quantity: number | null;
+  uom: string | null;
+  unit_price: number | null;
+  amount: number | null;
+}
+
+export interface UsInvTotals {
+  subtotal: number | null;
+  discount: number | null;
+  freight: number | null;
+  /** A percentage as printed: 7.25 means 7.25%. */
+  tax_rate: number | null;
+  sales_tax: number | null;
+  total: number | null;
+  amount_paid: number | null;
+  balance_due: number | null;
+}
+
+export interface UsInvData {
+  document_type: "INV";
+  invoice_number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  /** The customer's purchase order this invoice bills against. */
+  po_number: string | null;
+  /** The vendor's own sales order or job number. */
+  order_number: string | null;
+  customer_number: string | null;
+  bol_number: string | null;
+  ship_date: string | null;
+  ship_via: string | null;
+  freight_terms: string | null;
+  payment_terms: string | null;
+  currency: string | null;
+  received_by: string | null;
+  received_at: string | null;
+  vendor: UsParty;
+  remit_to: Pick<UsParty, "name" | "address">;
+  bill_to: UsParty;
+  ship_to: UsParty;
+  line_items: UsInvLineItem[];
+  totals: UsInvTotals;
+  notes: string[];
+}
+
+export type UsDocumentData = UsSaData | UsSoData | UsInvData;
 
 export function isSaData(doc: UsDocumentData | null | undefined): doc is UsSaData {
   return doc?.document_type === "SA";

@@ -30,7 +30,7 @@ async def get_review(document_id: str):
         "document_id": document_id,
         "status": doc.get("status"),
         "filename": doc.get("filename"),
-        # The review UI routes on these: USA documents render the SO/SA screen.
+        # The review UI routes on these: USA documents render the SO/SA/INV screen.
         "country": doc.get("country") or "INDIA",
         "doc_type": doc.get("doc_type"),
         "complexity_score": doc.get("complexity_score"),

@@ -70,7 +70,7 @@ export function getPageImageUrl(pageUrl: string) {
 }
 
 // ---- USA Document API ----
-// A US purchase order or shipping authorization travels the same endpoints as
+// A US purchase order, shipping authorization or invoice travels the same endpoints as
 // an invoice -- the payload keeps the "invoice" envelope key -- so these are
 // typed views of the invoice functions rather than new routes.
 

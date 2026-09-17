@@ -26,6 +26,7 @@ COUNTRY_USA = "USA"
 
 DOC_TYPE_SO = "SO"
 DOC_TYPE_SA = "SA"
+DOC_TYPE_INV = "INV"
 DOC_TYPE_UNKNOWN = "UNKNOWN"
 
 
@@ -99,6 +100,24 @@ US_SO_RULESET = RuleSet(
     }),
 )
 
+US_INV_RULESET = RuleSet(
+    name="us_invoice",
+    run=us_validation_service.run_inv_rules,
+    # The fields an invoice cannot be paid or matched without, and totals that
+    # have to reconcile because the total is what gets paid. A line that does
+    # not multiply out, a subtotal that disagrees with its lines, or a due date
+    # before the invoice date all send the document to a human instead: each
+    # is often a vendor's own rounding or a single misread, not a bad invoice.
+    critical_for_messages=frozenset({
+        "inv_invoice_number_present", "inv_invoice_date_valid", "inv_line_items_present",
+        "inv_total_present", "inv_totals_math_check",
+    }),
+    critical_for_status=frozenset({
+        "inv_invoice_number_present", "inv_invoice_date_valid", "inv_line_items_present",
+        "inv_total_present", "inv_totals_math_check",
+    }),
+)
+
 
 # A document the classifier could not place still gets read as a purchase
 # order, because that degrades to a mostly-empty form rather than a misaligned
@@ -123,4 +142,6 @@ def get_ruleset(country: Optional[str], doc_type: Optional[str] = None) -> RuleS
         return US_SA_RULESET
     if normalized == DOC_TYPE_SO:
         return US_SO_RULESET
+    if normalized == DOC_TYPE_INV:
+        return US_INV_RULESET
     return US_UNKNOWN_RULESET

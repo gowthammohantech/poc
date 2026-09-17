@@ -168,7 +168,7 @@ function DocumentsPage() {
                 <tr>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Filename</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">
-                    {isUsa ? "Order / Release No" : "Invoice No"}
+                    {isUsa ? "Document No" : "Invoice No"}
                   </th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Source</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
@@ -215,7 +215,9 @@ function DocumentsPage() {
                               ? "text-violet-700 bg-violet-50"
                               : doc.doc_type === "SO"
                                 ? "text-indigo-700 bg-indigo-50"
-                                : "text-gray-600 bg-gray-50"
+                                : doc.doc_type === "INV"
+                                  ? "text-emerald-700 bg-emerald-50"
+                                  : "text-gray-600 bg-gray-50"
                           }`}
                         >
                           {doc.doc_type || "—"}

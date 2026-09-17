@@ -1,6 +1,6 @@
-"""Mastra calls for the two US document types.
+"""Mastra calls for the three US document types.
 
-Both documents are read by vision. The JSON-parsing helpers are imported from
+All three are read by vision. The JSON-parsing helpers are imported from
 mastra_client rather than copied -- brs_mastra_client already duplicates them
 once, and a third copy is where they start to drift.
 
@@ -37,8 +37,9 @@ MAX_VISION_PAGES = 5
 
 DOC_TYPE_SA = "SA"
 DOC_TYPE_SO = "SO"
+DOC_TYPE_INV = "INV"
 DOC_TYPE_UNKNOWN = "UNKNOWN"
-VALID_DOC_TYPES = {DOC_TYPE_SA, DOC_TYPE_SO, DOC_TYPE_UNKNOWN}
+VALID_DOC_TYPES = {DOC_TYPE_SA, DOC_TYPE_SO, DOC_TYPE_INV, DOC_TYPE_UNKNOWN}
 
 _MONTHS = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -52,6 +53,13 @@ _SA_KEYWORDS = (
 _SO_KEYWORDS = (
     "PURCHASE ORDER", "SALES ORDER", "UNIT COST", "UNIT PRICE", "EXT'D COST",
     "EXTENDED", "BILL TO", "SHIP VIA", "FREIGHT TERMS",
+)
+# Only wording an order cannot carry. "BILL TO", "UNIT PRICE" and the like sit
+# on an invoice as often as on an order, so they stay SO-only above and these
+# count double to outweigh them.
+_INV_KEYWORDS = (
+    "INVOICE NUMBER", "INVOICE NO", "INVOICE #", "INVOICE DATE", "REMIT TO",
+    "AMOUNT DUE", "BALANCE DUE", "TOTAL DUE", "PLEASE PAY",
 )
 
 
@@ -98,11 +106,15 @@ def fallback_document_type(ocr_text: str) -> Dict[str, Any]:
     if re.search(r"\bW\d{1,2}\b", upper):
         sa_hits += 1
     so_hits = sum(k in upper for k in _SO_KEYWORDS)
+    inv_hits = 2 * sum(k in upper for k in _INV_KEYWORDS)
 
-    if sa_hits > so_hits:
+    if sa_hits > max(so_hits, inv_hits):
         return {"document_type": DOC_TYPE_SA, "confidence": 0.4,
                 "reason": "keyword fallback: release-style wording in the OCR text"}
-    if so_hits > sa_hits:
+    if inv_hits > max(so_hits, sa_hits):
+        return {"document_type": DOC_TYPE_INV, "confidence": 0.4,
+                "reason": "keyword fallback: invoice-style wording in the OCR text"}
+    if so_hits > max(sa_hits, inv_hits):
         return {"document_type": DOC_TYPE_SO, "confidence": 0.4,
                 "reason": "keyword fallback: order-style wording in the OCR text"}
     return {"document_type": DOC_TYPE_UNKNOWN, "confidence": 0.0,
@@ -116,7 +128,7 @@ async def call_us_doc_classifier(payload: Dict[str, Any]) -> Dict[str, Any]:
     content = [{
         "type": "text",
         "text": (
-            "Classify this US supply-chain document as SO, SA or UNKNOWN.\n"
+            "Classify this US supply-chain document as SO, SA, INV or UNKNOWN.\n"
             f"Document ID: {document_id}\n"
             "Decide from the page layout first and the wording second.\n"
             + (f"\nOCR text (secondary reference only):\n{ocr_text[:4000]}\n" if ocr_text else "")
@@ -183,6 +195,11 @@ async def call_us_sa_vision_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def call_us_so_vision_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     return await _call_us_vision_agent(
         "usSoDirectVisionAgent", "purchase order", payload)
+
+
+async def call_us_inv_vision_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return await _call_us_vision_agent(
+        "usInvDirectVisionAgent", "invoice", payload)
 
 
 async def call_us_validation_agent(payload: Dict[str, Any]) -> Dict[str, Any]:

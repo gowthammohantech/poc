@@ -1,4 +1,4 @@
-"""Rules for the two US document types, checked against the real samples.
+"""Rules for the three US document types, checked against the real samples.
 
 The golden payloads below are taken from the two sample documents, so a change
 that breaks extraction of a document we have actually seen fails here.
@@ -6,7 +6,7 @@ that breaks extraction of a document we have actually seen fails here.
 
 import pytest
 
-from app.services.us_validation_service import run_sa_rules, run_so_rules
+from app.services.us_validation_service import run_inv_rules, run_sa_rules, run_so_rules
 
 
 def _checks_by_rule(checks):
@@ -212,7 +212,8 @@ class TestPurchaseOrderRules:
         assert not _checks_by_rule(run_so_rules(_so(ship_to={})))["so_ship_to_present"].passed
 
     def test_no_gst_rule_ever_runs_on_a_us_document(self):
-        rules = " ".join(c.rule for c in run_so_rules(_so()) + run_sa_rules(_sa()))
+        rules = " ".join(
+            c.rule for c in run_so_rules(_so()) + run_sa_rules(_sa()) + run_inv_rules(_inv()))
         for india_only in ("gstin", "hsn", "cgst", "sgst", "igst", "ifsc", "pan"):
             assert india_only not in rules
 
@@ -237,3 +238,145 @@ class TestRepairDoesNotHideMisalignment:
             "quantities_repaired": "trimmed from 6 to 4",
         }])
         assert not _checks_by_rule(run_sa_rules(payload))["sa_schedule_width_match"].passed
+
+
+# --------------------------------------------------------------------------
+# INV — a supplier invoice billing the M.Y. Auto Tech purchase order
+# --------------------------------------------------------------------------
+
+def _inv(**overrides):
+    doc = {
+        "document_type": "INV",
+        "invoice_number": "INV-204417",
+        "invoice_date": "2026-09-02",
+        "due_date": "2026-11-01",
+        "po_number": "33336",
+        "order_number": "SO-88120",
+        "customer_number": "MYAUTO01",
+        "payment_terms": "NET 60",
+        "currency": "USD",
+        "vendor": {"name": "PIOLAX", "address": "139 ETOWAH INDUSTRIAL COURT, CANTON, GA 30114",
+                   "tax_id": "58-1234567"},
+        "remit_to": {"name": "PIOLAX", "address": "PO BOX 930412, ATLANTA, GA 31193"},
+        "bill_to": {"name": "M.Y. AUTO TECH MFG. OF AMERICA",
+                    "address": "565 Beulah Church Rd, CARROLLTON, GA 30117"},
+        "ship_to": {"address": "565 BEULAH CHURCH RD, CARROLLTON, GA 30117"},
+        "line_items": [
+            {"line_number": 1, "part_number": "17550THRAA030Y1", "quantity": 1780,
+             "unit_price": 6.2985, "amount": 11211.33},
+            {"line_number": 2, "part_number": "9159410A 3000", "quantity": 17500,
+             "unit_price": 0.1621, "amount": 2836.75},
+        ],
+        "totals": {"subtotal": 14048.08, "discount": None, "freight": 150.00,
+                   "tax_rate": None, "sales_tax": 0.0, "total": 14198.08,
+                   "amount_paid": None, "balance_due": 14198.08},
+        "notes": [],
+    }
+    doc.update(overrides)
+    return {"invoice": doc}
+
+
+def _inv_totals(**overrides):
+    totals = dict(_inv()["invoice"]["totals"])
+    totals.update(overrides)
+    return totals
+
+
+class TestInvoiceRules:
+    def test_the_golden_invoice_passes_every_rule(self):
+        failed = [c.message for c in run_inv_rules(_inv()) if not c.passed]
+        assert failed == []
+
+    def test_the_rules_it_runs(self):
+        rules = set(_checks_by_rule(run_inv_rules(_inv())))
+        assert {
+            "inv_invoice_number_present", "inv_invoice_number_distinct", "inv_invoice_date_valid",
+            "inv_due_date_valid", "inv_due_date_after_invoice_date", "inv_vendor_identified",
+            "inv_bill_to_present", "inv_line_items_present", "inv_line_1_amount",
+            "inv_total_present", "inv_subtotal_matches_lines", "inv_totals_math_check",
+            "inv_balance_due_check",
+        } <= rules
+
+    def test_a_missing_invoice_number_is_rejected(self):
+        assert not _checks_by_rule(run_inv_rules(_inv(invoice_number=None)))[
+            "inv_invoice_number_present"].passed
+
+    def test_the_po_number_read_as_the_invoice_number_is_flagged(self):
+        check = _checks_by_rule(run_inv_rules(_inv(invoice_number="33336")))[
+            "inv_invoice_number_distinct"]
+        assert not check.passed
+        assert "PO number" in check.message
+
+    def test_a_missing_invoice_date_is_rejected(self):
+        assert not _checks_by_rule(run_inv_rules(_inv(invoice_date=None)))[
+            "inv_invoice_date_valid"].passed
+
+    def test_a_day_first_date_is_rejected(self):
+        assert not _checks_by_rule(run_inv_rules(_inv(invoice_date="02/09/2026")))[
+            "inv_invoice_date_valid"].passed
+
+    def test_a_missing_due_date_is_not_a_failure(self):
+        """NET 60 with no printed due date is normal; the prompt must not invent one."""
+        checks = _checks_by_rule(run_inv_rules(_inv(due_date=None)))
+        assert "inv_due_date_valid" not in checks
+        assert "inv_due_date_after_invoice_date" not in checks
+
+    def test_a_due_date_before_the_invoice_date_is_flagged(self):
+        assert not _checks_by_rule(run_inv_rules(_inv(due_date="2026-02-09")))[
+            "inv_due_date_after_invoice_date"].passed
+
+    def test_a_line_that_does_not_multiply_out_is_flagged(self):
+        lines = [{"quantity": 1780, "unit_price": 6.2985, "amount": 1121.13}]
+        assert not _checks_by_rule(run_inv_rules(_inv(line_items=lines)))[
+            "inv_line_1_amount"].passed
+
+    def test_a_lump_sum_line_skips_the_arithmetic(self):
+        lines = [{"description": "TOOLING CHARGE", "quantity": None, "unit_price": None,
+                  "amount": 500.0}]
+        checks = _checks_by_rule(run_inv_rules(_inv(
+            line_items=lines, totals=_inv_totals(subtotal=500.0, total=650.0, balance_due=650.0))))
+        assert "inv_line_1_amount" not in checks
+        assert checks["inv_totals_math_check"].passed
+
+    def test_a_missing_total_is_rejected(self):
+        """Unlike a purchase order, an invoice exists to say what is owed."""
+        check = _checks_by_rule(run_inv_rules(_inv(
+            totals=_inv_totals(total=None, balance_due=None))))["inv_total_present"]
+        assert not check.passed
+
+    def test_a_balance_due_alone_counts_as_a_total(self):
+        assert _checks_by_rule(run_inv_rules(_inv(totals=_inv_totals(total=None))))[
+            "inv_total_present"].passed
+
+    def test_totals_that_do_not_reconcile_are_rejected(self):
+        check = _checks_by_rule(run_inv_rules(_inv(totals=_inv_totals(total=15198.08))))[
+            "inv_totals_math_check"]
+        assert not check.passed
+        assert "14198.08" in check.message
+
+    def test_sales_tax_and_discount_are_part_of_the_total(self):
+        totals = _inv_totals(discount=48.08, freight=None, tax_rate=7.0, sales_tax=980.0,
+                             total=14980.0, balance_due=14980.0)
+        assert _checks_by_rule(run_inv_rules(_inv(totals=totals)))["inv_totals_math_check"].passed
+
+    def test_a_discount_printed_as_a_credit_is_still_subtracted(self):
+        totals = _inv_totals(discount=-48.08, freight=None, total=14000.0, balance_due=14000.0)
+        assert _checks_by_rule(run_inv_rules(_inv(totals=totals)))["inv_totals_math_check"].passed
+
+    def test_a_subtotal_that_disagrees_with_its_lines_is_flagged(self):
+        assert not _checks_by_rule(run_inv_rules(_inv(totals=_inv_totals(subtotal=14000.0))))[
+            "inv_subtotal_matches_lines"].passed
+
+    def test_a_partial_payment_must_leave_the_right_balance(self):
+        checks = _checks_by_rule(run_inv_rules(_inv(
+            totals=_inv_totals(amount_paid=5000.0, balance_due=9198.08))))
+        assert checks["inv_balance_due_check"].passed
+
+        checks = _checks_by_rule(run_inv_rules(_inv(
+            totals=_inv_totals(amount_paid=5000.0, balance_due=14198.08))))
+        assert not checks["inv_balance_due_check"].passed
+
+    def test_no_sales_tax_is_not_a_failure(self):
+        totals = _inv_totals(sales_tax=None, tax_rate=None)
+        failed = [c.rule for c in run_inv_rules(_inv(totals=totals)) if not c.passed]
+        assert failed == []

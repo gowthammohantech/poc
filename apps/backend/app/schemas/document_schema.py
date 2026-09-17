@@ -15,8 +15,8 @@ class DocumentCreate(BaseModel):
     source_connector_id: Optional[str] = None
     source_ref: Optional[str] = None
     source_metadata: Optional[str] = None
-    # Extraction regime: INDIA (GST invoices) or USA (POs and shipping
-    # authorizations). doc_type is filled in by the US classifier step.
+    # Extraction regime: INDIA (GST invoices) or USA (POs, shipping
+    # authorizations and invoices). doc_type is filled in by the US classifier step.
     country: str = "INDIA"
     doc_type: Optional[str] = None
 

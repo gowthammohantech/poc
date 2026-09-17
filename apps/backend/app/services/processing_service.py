@@ -227,7 +227,7 @@ async def run_processing_pipeline(document_id: str) -> dict:
 
 
 async def _run_us_pipeline(document_id: str, doc: dict, pages: list) -> dict:
-    """OCR → classify → extract → validate, for a US purchase order or release.
+    """OCR → classify → extract → validate, for a US purchase order, release or invoice.
 
     Kept as its own function rather than a set of conditionals threaded through
     the India body above: the two regimes share the persistence calls and
@@ -235,7 +235,7 @@ async def _run_us_pipeline(document_id: str, doc: dict, pages: list) -> dict:
 
     Three deliberate differences from the India pipeline:
 
-      * The router agent is skipped and vision is always used. Both US
+      * The router agent is skipped and vision is always used. All US
         documents are dense tables whose meaning lives in the column a number
         sits in, and Tesseract runs --psm 6, which reads a grid as one
         paragraph and throws that away. A misread digit on an order line is
@@ -312,6 +312,8 @@ async def _run_us_pipeline(document_id: str, doc: dict, pages: list) -> dict:
     # columns are silently misaligned.
     if doc_type == us_mastra_client.DOC_TYPE_SA:
         raw = await us_mastra_client.call_us_sa_vision_agent(extraction_payload)
+    elif doc_type == us_mastra_client.DOC_TYPE_INV:
+        raw = await us_mastra_client.call_us_inv_vision_agent(extraction_payload)
     else:
         raw = await us_mastra_client.call_us_so_vision_agent(extraction_payload)
 

@@ -14,6 +14,7 @@ from app.schemas.validation_schema import RuleCheck
 from app.services import validation_service
 from app.services.validation_rulesets import (
     INDIA_INVOICE_RULESET,
+    US_INV_RULESET,
     US_SA_RULESET,
     US_SO_RULESET,
     US_UNKNOWN_RULESET,
@@ -104,6 +105,9 @@ class TestRuleSetSelection:
         ("USA", "SA", US_SA_RULESET),
         ("usa", "sa", US_SA_RULESET),
         ("USA", "SO", US_SO_RULESET),
+        ("USA", "INV", US_INV_RULESET),
+        ("usa", "inv", US_INV_RULESET),
+        ("INDIA", "INV", INDIA_INVOICE_RULESET),
         ("USA", "UNKNOWN", US_UNKNOWN_RULESET),
         ("USA", None, US_UNKNOWN_RULESET),
     ])
@@ -118,3 +122,13 @@ class TestRuleSetSelection:
         warnings, errors = US_UNKNOWN_RULESET.partition_messages(checks)
         assert errors == []
         assert len(warnings) == 2
+
+    def test_an_unreconciled_us_invoice_is_invalid(self):
+        assert US_INV_RULESET.determine_status([_failed("inv_totals_math_check")], []) == "INVALID"
+
+    def test_a_single_line_mismatch_only_needs_review(self):
+        """A vendor rounding one line is not a reason to reject the whole invoice."""
+        assert US_INV_RULESET.determine_status([_failed("inv_line_1_amount")], []) == "NEEDS_REVIEW"
+
+    def test_a_us_invoice_is_never_failed_on_a_gst_rule(self):
+        assert US_INV_RULESET.determine_status([_failed("vendor_gstin_format")], []) == "NEEDS_REVIEW"

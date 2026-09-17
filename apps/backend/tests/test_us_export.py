@@ -11,6 +11,8 @@ import io
 import pytest
 
 from app.services.us_export_service import (
+    build_inv_export_csv,
+    build_inv_export_excel,
     build_sa_export_csv,
     build_sa_export_excel,
     build_so_export_csv,
@@ -82,6 +84,35 @@ def _so_document() -> dict:
         "totals": {"subtotal": None, "sales_tax": None, "freight": None,
                    "discount": None, "grand_total": None},
         "notes": [],
+    }
+
+
+def _inv_document() -> dict:
+    return {
+        "document_type": "INV",
+        "invoice_number": "INV-204417",
+        "invoice_date": "2026-09-02",
+        "due_date": "2026-11-01",
+        "po_number": "33336",
+        "order_number": "SO-88120",
+        "customer_number": "000417",
+        "bol_number": None,
+        "payment_terms": "NET 60",
+        "currency": "USD",
+        "vendor": {"name": "PIOLAX", "address": "139 ETOWAH INDUSTRIAL COURT, CANTON, GA 30114",
+                   "tax_id": "58-1234567", "email": "ar@piolax.example"},
+        "remit_to": {"name": "PIOLAX", "address": "PO BOX 930412, ATLANTA, GA 31193"},
+        "bill_to": {"name": "M.Y. AUTO TECH MFG. OF AMERICA", "address": None},
+        "ship_to": {"name": None, "address": "565 BEULAH CHURCH RD, CARROLLTON, GA 30117"},
+        "line_items": [
+            {"line_number": 1, "part_number": "9159410A 3000", "description": "CLIP PROTECTOR MT",
+             "quantity_ordered": 20000, "quantity": 17500, "uom": "EA",
+             "unit_price": 0.1621, "amount": 2836.75},
+        ],
+        "totals": {"subtotal": 2836.75, "discount": None, "freight": 150.0, "tax_rate": None,
+                   "sales_tax": None, "total": 2986.75, "amount_paid": None,
+                   "balance_due": 2986.75},
+        "notes": ["ACH: routing 061000104"],
     }
 
 
@@ -168,7 +199,53 @@ class TestPurchaseOrderCsv:
         assert "None" not in text
 
 
+class TestInvoiceCsv:
+    def test_the_invoice_header_carries_every_reference(self):
+        rows = list(csv.reader(io.StringIO(build_inv_export_csv(_final(_inv_document())))))
+        header = {row[0]: row[1] for row in rows if len(row) == 2}
+        assert header["Invoice Number"] == "INV-204417"
+        assert header["PO Number"] == "33336"
+        assert header["Due Date"] == "2026-11-01"
+        # Leading zeros are the whole of some customer numbers.
+        assert header["Customer Number"] == "000417"
+
+    def test_the_remit_to_and_tax_id_survive(self):
+        text = build_inv_export_csv(_final(_inv_document()))
+        assert "Remit To Address,\"PO BOX 930412, ATLANTA, GA 31193\"" in text
+        assert "Vendor Tax ID,58-1234567" in text
+
+    def test_the_line_columns_are_the_invoice_ones(self):
+        rows = list(csv.reader(io.StringIO(build_inv_export_csv(_final(_inv_document())))))
+        start = next(i for i, row in enumerate(rows) if row and row[0] == "Line Items")
+        assert rows[start + 1] == ["Line #", "Part Number", "Description", "Qty Ordered",
+                                   "Qty Invoiced", "UOM", "Unit Price", "Amount"]
+        assert rows[start + 2][4] == "17500"
+        assert rows[start + 2][6] == "0.1621"
+
+    def test_what_is_owed_is_exported(self):
+        text = build_inv_export_csv(_final(_inv_document()))
+        assert "Total,2986.75" in text
+        assert "Balance Due,2986.75" in text
+
+    def test_no_gst_column_leaks_in_and_nulls_are_blank(self):
+        text = build_inv_export_csv(_final(_inv_document()))
+        for india_only in ("GSTIN", "CGST", "SGST", "IGST", "HSN", "IFSC"):
+            assert india_only not in text.upper()
+        assert "None" not in text
+
+
 class TestExcel:
+    def test_the_invoice_workbook(self):
+        openpyxl = pytest.importorskip("openpyxl")
+        wb = openpyxl.load_workbook(io.BytesIO(build_inv_export_excel(_final(_inv_document()))))
+
+        assert wb.sheetnames == ["Invoice Header", "Line Items", "Notes"]
+        assert wb["Line Items"].cell(row=1, column=8).value == "Amount"
+        assert wb["Line Items"].cell(row=2, column=7).value == 0.1621
+        labels = {row[0].value: row[1].value for row in wb["Invoice Header"].iter_rows()}
+        assert labels["Invoice Number"] == "INV-204417"
+        assert labels["Balance Due"] == 2986.75
+
     def test_the_release_workbook_freezes_the_identity_columns(self):
         openpyxl = pytest.importorskip("openpyxl")
         wb = openpyxl.load_workbook(io.BytesIO(build_sa_export_excel(_final(_sa_document()))))
@@ -196,7 +273,8 @@ class TestExcel:
 
 class TestDispatch:
     @pytest.mark.parametrize("doc_type,expected", [
-        ("SA", "release"), ("sa", "release"), ("SO", "order"), ("UNKNOWN", "order"), (None, "order"),
+        ("SA", "release"), ("sa", "release"), ("SO", "order"), ("INV", "invoice"),
+        ("inv", "invoice"), ("UNKNOWN", "order"), (None, "order"),
     ])
     def test_the_download_is_named_after_the_document(self, doc_type, expected):
         assert export_basename(doc_type) == expected
@@ -204,6 +282,7 @@ class TestDispatch:
     def test_csv_dispatch_follows_the_document_type(self):
         assert "Delivery Schedule" in build_us_export_csv(_final(_sa_document()), "SA")
         assert "Purchase Order" in build_us_export_csv(_final(_so_document()), "SO")
+        assert "Remit To Address" in build_us_export_csv(_final(_inv_document()), "INV")
 
     def test_excel_dispatch_follows_the_document_type(self):
         openpyxl = pytest.importorskip("openpyxl")
@@ -236,6 +315,12 @@ class TestDocTypeResolution:
         document = _sa_document()
         document.pop("document_type")
         assert resolve_doc_type(_final(document), {"doc_type": "SA"}) == "SA"
+
+    def test_a_reviewed_invoice_exports_as_an_invoice(self):
+        from app.services.us_export_service import resolve_doc_type
+        final = _final(_inv_document())
+        assert resolve_doc_type(final, {"doc_type": "SO"}) == "INV"
+        assert "Invoice Number" in build_us_export_csv(final, resolve_doc_type(final, {}))
 
     def test_a_junk_payload_type_falls_back_to_the_row(self):
         from app.services.us_export_service import resolve_doc_type

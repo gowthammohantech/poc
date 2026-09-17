@@ -8,12 +8,12 @@ import ConfidenceBadge from "@/components/ConfidenceBadge";
 import PagePreview from "@/components/PagePreview";
 import { Field, NavArrow, inputCls, tdInputCls } from "@/components/review/ReviewPrimitives";
 import SaScheduleGrid from "@/components/review/SaScheduleGrid";
-import SoLineItems from "@/components/review/SoLineItems";
+import PricedLineItems from "@/components/review/PricedLineItems";
 import { SkeletonBar } from "@/components/Skeleton";
 import { getDocuments, getExportUrl, getUsReview, submitUsReview } from "@/lib/api";
 import { normalizeCountry } from "@/lib/country";
 import type { Document } from "@/types/invoice";
-import type { UsDocumentData, UsReviewData, UsSaData, UsSoData } from "@/types/usDocument";
+import type { UsDocumentData, UsInvData, UsReviewData, UsSaData, UsSoData } from "@/types/usDocument";
 
 export default function UsReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -111,7 +111,8 @@ export default function UsReviewPage() {
   }
 
   const doc = review.invoice;
-  const isSa = doc?.document_type === "SA";
+  // Route on the payload, as the export does: it is what the form edits.
+  const formType = doc?.document_type;
   const val = review.validation;
   const conf = review.confidence ?? {};
   const docStatus = review.status || val?.status;
@@ -120,7 +121,9 @@ export default function UsReviewPage() {
       ? "Shipping Authorization"
       : review.doc_type === "SO"
         ? "Purchase Order"
-        : "Unclassified";
+        : review.doc_type === "INV"
+          ? "Invoice"
+          : "Unclassified";
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -182,7 +185,7 @@ export default function UsReviewPage() {
       {review.doc_type === "UNKNOWN" && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-800">
           This document could not be classified, so it was read as a purchase order. Correct any
-          fields below, or re-upload it if it is a shipping authorization.
+          fields below, or re-upload it if it is a shipping authorization or an invoice.
         </div>
       )}
 
@@ -207,9 +210,16 @@ export default function UsReviewPage() {
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="overflow-y-auto p-4 space-y-6">
-          {isSa ? (
+          {formType === "SA" ? (
             <SaSections
               doc={doc as UsSaData}
+              control={control}
+              register={register}
+              confidence={conf}
+            />
+          ) : formType === "INV" ? (
+            <InvSections
+              doc={doc as UsInvData}
               control={control}
               register={register}
               confidence={conf}
@@ -435,7 +445,13 @@ function SoSections({ doc, control, register, confidence }: SectionProps<UsSoDat
         </section>
       ))}
 
-      <SoLineItems doc={doc} control={control} register={register} confidence={confidence} />
+      <PricedLineItems
+        doc={doc}
+        variant="SO"
+        control={control}
+        register={register}
+        confidence={confidence}
+      />
 
       <section className="bg-white rounded-lg border p-4 space-y-3">
         <h2 className="text-xs font-semibold uppercase text-gray-500">Totals</h2>
@@ -461,6 +477,186 @@ function SoSections({ doc, control, register, confidence }: SectionProps<UsSoDat
           ))}
         </div>
       </section>
+    </>
+  );
+}
+
+function InvSections({ doc, control, register, confidence }: SectionProps<UsInvData>) {
+  const { fields: noteFields } = useFieldArray({ control, name: "notes" as never });
+
+  return (
+    <>
+      <section className="bg-white rounded-lg border p-4 space-y-3">
+        <h2 className="text-xs font-semibold uppercase text-gray-500 flex items-center gap-2">
+          Invoice
+          <ConfidenceBadge value={confidence.document_number ?? confidence.overall ?? 0} />
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Invoice Number">
+            <input className={inputCls} {...register("invoice_number")} />
+          </Field>
+          <Field label="Invoice Date">
+            <input className={inputCls} placeholder="YYYY-MM-DD" {...register("invoice_date")} />
+          </Field>
+          <Field label="Due Date">
+            <input className={inputCls} placeholder="YYYY-MM-DD" {...register("due_date")} />
+          </Field>
+          <Field label="Payment Terms">
+            <input className={inputCls} {...register("payment_terms")} />
+          </Field>
+          <Field label="PO Number">
+            <input className={inputCls} {...register("po_number")} />
+          </Field>
+          <Field label="Sales Order Number">
+            <input className={inputCls} {...register("order_number")} />
+          </Field>
+          <Field label="Customer Number">
+            <input className={inputCls} {...register("customer_number")} />
+          </Field>
+          <Field label="Currency">
+            <input className={inputCls} placeholder="USD" {...register("currency")} />
+          </Field>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-lg border p-4 space-y-3">
+        <h2 className="text-xs font-semibold uppercase text-gray-500">Shipment</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Ship Date">
+            <input className={inputCls} placeholder="YYYY-MM-DD" {...register("ship_date")} />
+          </Field>
+          <Field label="Ship Via">
+            <input className={inputCls} {...register("ship_via")} />
+          </Field>
+          <Field label="Freight Terms">
+            <input className={inputCls} {...register("freight_terms")} />
+          </Field>
+          <Field label="BOL / Tracking">
+            <input className={inputCls} {...register("bol_number")} />
+          </Field>
+          <Field label="Received By">
+            <input className={inputCls} {...register("received_by")} />
+          </Field>
+          <Field label="Received At">
+            <input className={inputCls} {...register("received_at")} />
+          </Field>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-lg border p-4 space-y-3">
+        <h2 className="text-xs font-semibold uppercase text-gray-500 flex items-center gap-2">
+          Vendor
+          <ConfidenceBadge value={confidence.parties ?? confidence.overall ?? 0} />
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Name">
+            <input className={inputCls} {...register("vendor.name")} />
+          </Field>
+          <Field label="Tax ID (EIN)">
+            <input className={inputCls} {...register("vendor.tax_id")} />
+          </Field>
+          <Field label="Contact">
+            <input className={inputCls} {...register("vendor.contact")} />
+          </Field>
+          <Field label="Phone">
+            <input className={inputCls} {...register("vendor.phone")} />
+          </Field>
+          <Field label="Email" colSpan>
+            <input className={inputCls} {...register("vendor.email")} />
+          </Field>
+          <Field label="Address" colSpan>
+            <textarea rows={2} className={inputCls} {...register("vendor.address")} />
+          </Field>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-lg border p-4 space-y-3">
+        <h2 className="text-xs font-semibold uppercase text-gray-500">Remit To</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Name" colSpan>
+            <input className={inputCls} {...register("remit_to.name")} />
+          </Field>
+          <Field label="Address" colSpan>
+            <textarea rows={2} className={inputCls} {...register("remit_to.address")} />
+          </Field>
+        </div>
+      </section>
+
+      {(
+        [
+          ["bill_to", "Bill To"],
+          ["ship_to", "Ship To"],
+        ] as const
+      ).map(([key, label]) => (
+        <section key={key} className="bg-white rounded-lg border p-4 space-y-3">
+          <h2 className="text-xs font-semibold uppercase text-gray-500">{label}</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Name">
+              <input className={inputCls} {...register(`${key}.name`)} />
+            </Field>
+            <Field label="Phone">
+              <input className={inputCls} {...register(`${key}.phone`)} />
+            </Field>
+            <Field label="Contact" colSpan>
+              <input className={inputCls} {...register(`${key}.contact`)} />
+            </Field>
+            <Field label="Address" colSpan>
+              <textarea rows={2} className={inputCls} {...register(`${key}.address`)} />
+            </Field>
+          </div>
+        </section>
+      ))}
+
+      <PricedLineItems
+        doc={doc}
+        variant="INV"
+        control={control}
+        register={register}
+        confidence={confidence}
+      />
+
+      <section className="bg-white rounded-lg border p-4 space-y-3">
+        <h2 className="text-xs font-semibold uppercase text-gray-500 flex items-center gap-2">
+          Totals
+          <ConfidenceBadge value={confidence.totals ?? confidence.overall ?? 0} />
+        </h2>
+        <p className="text-xs text-gray-400">
+          Subtotal less discount plus freight and sales tax must equal the total. Many invoices
+          charge no sales tax; leave it blank rather than entering a figure that was not printed.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          {(
+            [
+              ["subtotal", "Subtotal"],
+              ["discount", "Discount"],
+              ["freight", "Freight"],
+              ["tax_rate", "Sales Tax Rate %"],
+              ["sales_tax", "Sales Tax"],
+              ["total", "Total"],
+              ["amount_paid", "Amount Paid"],
+              ["balance_due", "Balance Due"],
+            ] as const
+          ).map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                type="number"
+                step="any"
+                className={inputCls}
+                {...register(`totals.${key}`, { valueAsNumber: true })}
+              />
+            </Field>
+          ))}
+        </div>
+      </section>
+
+      {noteFields.length > 0 && (
+        <section className="bg-white rounded-lg border p-4 space-y-2">
+          <h2 className="text-xs font-semibold uppercase text-gray-500">Notes</h2>
+          {noteFields.map((field, i) => (
+            <textarea key={field.id} rows={2} className={inputCls} {...register(`notes.${i}` as const)} />
+          ))}
+        </section>
+      )}
     </>
   );
 }

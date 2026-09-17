@@ -1,4 +1,4 @@
-"""Export builders for the two US document types.
+"""Export builders for the three US document types.
 
 The India builders hardcode thirteen GST columns at fixed indices, which a
 shipping authorization's variable-width week grid cannot use, so these are
@@ -11,6 +11,8 @@ import io
 from typing import Any, Dict, List, Optional
 
 DOC_TYPE_SA = "SA"
+DOC_TYPE_SO = "SO"
+DOC_TYPE_INV = "INV"
 
 
 def _document(final_output: Dict[str, Any]) -> Dict[str, Any]:
@@ -319,6 +321,155 @@ def build_so_export_excel(final_output: Dict[str, Any]) -> bytes:
 
 
 # --------------------------------------------------------------------------
+# INV — invoice
+# --------------------------------------------------------------------------
+
+_INV_HEADER_ROWS = [
+    ("invoice_number", "Invoice Number"),
+    ("invoice_date", "Invoice Date"),
+    ("due_date", "Due Date"),
+    ("po_number", "PO Number"),
+    ("order_number", "Sales Order Number"),
+    ("customer_number", "Customer Number"),
+    ("bol_number", "BOL / Tracking Number"),
+    ("ship_date", "Ship Date"),
+    ("ship_via", "Ship Via"),
+    ("freight_terms", "Freight Terms"),
+    ("payment_terms", "Payment Terms"),
+    ("currency", "Currency"),
+    ("received_by", "Received By"),
+    ("received_at", "Received At"),
+]
+
+_INV_PARTIES = (("Vendor", "vendor"), ("Remit To", "remit_to"),
+                ("Bill To", "bill_to"), ("Ship To", "ship_to"))
+
+_INV_LINE_COLUMNS = [
+    ("line_number", "Line #"),
+    ("part_number", "Part Number"),
+    ("description", "Description"),
+    ("quantity_ordered", "Qty Ordered"),
+    ("quantity", "Qty Invoiced"),
+    ("uom", "UOM"),
+    ("unit_price", "Unit Price"),
+    ("amount", "Amount"),
+]
+
+_INV_TOTAL_ROWS = [
+    ("subtotal", "Subtotal"),
+    ("discount", "Discount"),
+    ("freight", "Freight"),
+    ("tax_rate", "Sales Tax Rate %"),
+    ("sales_tax", "Sales Tax"),
+    ("total", "Total"),
+    ("amount_paid", "Amount Paid"),
+    ("balance_due", "Balance Due"),
+]
+
+
+def _inv_party_rows(label: str, party: Optional[dict]) -> List[List[Any]]:
+    party = party or {}
+    rows = _party_rows(label, party)
+    for key, suffix in (("email", "Email"), ("tax_id", "Tax ID")):
+        if party.get(key) is not None:
+            rows.append([f"{label} {suffix}", _blank(party.get(key))])
+    return rows
+
+
+def build_inv_export_csv(final_output: Dict[str, Any]) -> str:
+    doc = _document(final_output)
+    totals = doc.get("totals") or {}
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["Invoice"])
+    for key, label in _INV_HEADER_ROWS:
+        writer.writerow([label, _blank(doc.get(key))])
+    writer.writerow([])
+
+    for label, key in _INV_PARTIES:
+        for row in _inv_party_rows(label, doc.get(key)):
+            writer.writerow(row)
+        writer.writerow([])
+
+    writer.writerow(["Line Items"])
+    writer.writerow([label for _, label in _INV_LINE_COLUMNS])
+    for item in doc.get("line_items") or []:
+        writer.writerow([_blank(item.get(key)) for key, _ in _INV_LINE_COLUMNS])
+
+    writer.writerow([])
+    writer.writerow(["Totals"])
+    for key, label in _INV_TOTAL_ROWS:
+        writer.writerow([label, _blank(totals.get(key))])
+
+    notes = doc.get("notes") or []
+    if notes:
+        writer.writerow([])
+        writer.writerow(["Notes"])
+        for note in notes:
+            writer.writerow([_blank(note)])
+
+    return output.getvalue()
+
+
+def build_inv_export_excel(final_output: Dict[str, Any]) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    doc = _document(final_output)
+    totals = doc.get("totals") or {}
+    bold = Font(bold=True)
+    fill = PatternFill("solid", fgColor="D9E1F2")
+
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = "Invoice Header"
+
+    info: List[tuple] = [(label, doc.get(key)) for key, label in _INV_HEADER_ROWS]
+    info.append(("", ""))
+    for label, key in _INV_PARTIES:
+        info.extend(tuple(row) for row in _inv_party_rows(label, doc.get(key)))
+        info.append(("", ""))
+    info.extend((label, totals.get(key)) for key, label in _INV_TOTAL_ROWS)
+
+    for row_idx, (label, value) in enumerate(info, start=1):
+        ws1.cell(row=row_idx, column=1, value=label).font = bold
+        ws1.cell(row=row_idx, column=2, value=_blank(value))
+    ws1.column_dimensions["A"].width = 24
+    ws1.column_dimensions["B"].width = 50
+
+    ws2 = wb.create_sheet("Line Items")
+    for col_idx, (_, label) in enumerate(_INV_LINE_COLUMNS, start=1):
+        cell = ws2.cell(row=1, column=col_idx, value=label)
+        cell.font = bold
+        cell.fill = fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for row_idx, item in enumerate(doc.get("line_items") or [], start=2):
+        for col_idx, (key, _) in enumerate(_INV_LINE_COLUMNS, start=1):
+            ws2.cell(row=row_idx, column=col_idx, value=_blank(item.get(key)))
+
+    for letter, width in (("A", 8), ("B", 20), ("C", 42), ("D", 12),
+                          ("E", 12), ("F", 8), ("G", 14), ("H", 16)):
+        ws2.column_dimensions[letter].width = width
+    ws2.freeze_panes = "A2"
+
+    notes = doc.get("notes") or []
+    if notes:
+        ws3 = wb.create_sheet("Notes")
+        ws3.cell(row=1, column=1, value="Notes").font = bold
+        for row_idx, note in enumerate(notes, start=2):
+            cell = ws3.cell(row=row_idx, column=1, value=_blank(note))
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws3.column_dimensions["A"].width = 120
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------
 
 def resolve_doc_type(final_output: Dict[str, Any], document: Dict[str, Any]) -> Optional[str]:
     """Which builder to use, preferring what the reviewed payload says it is.
@@ -328,22 +479,29 @@ def resolve_doc_type(final_output: Dict[str, Any], document: Dict[str, Any]) -> 
     document_type wins when it has one.
     """
     payload_type = _document(final_output).get("document_type")
-    if isinstance(payload_type, str) and payload_type.strip().upper() in {DOC_TYPE_SA, "SO"}:
+    if isinstance(payload_type, str) and payload_type.strip().upper() in {
+            DOC_TYPE_SA, DOC_TYPE_SO, DOC_TYPE_INV}:
         return payload_type.strip().upper()
     return document.get("doc_type")
 
 
 def build_us_export_csv(final_output: Dict[str, Any], doc_type: Optional[str]) -> str:
-    if (doc_type or "").upper() == DOC_TYPE_SA:
+    normalized = (doc_type or "").upper()
+    if normalized == DOC_TYPE_SA:
         return build_sa_export_csv(final_output)
+    if normalized == DOC_TYPE_INV:
+        return build_inv_export_csv(final_output)
     return build_so_export_csv(final_output)
 
 
 def build_us_export_excel(final_output: Dict[str, Any], doc_type: Optional[str]) -> bytes:
-    if (doc_type or "").upper() == DOC_TYPE_SA:
+    normalized = (doc_type or "").upper()
+    if normalized == DOC_TYPE_SA:
         return build_sa_export_excel(final_output)
+    if normalized == DOC_TYPE_INV:
+        return build_inv_export_excel(final_output)
     return build_so_export_excel(final_output)
 
 
 def export_basename(doc_type: Optional[str]) -> str:
-    return "release" if (doc_type or "").upper() == DOC_TYPE_SA else "order"
+    return {DOC_TYPE_SA: "release", DOC_TYPE_INV: "invoice"}.get((doc_type or "").upper(), "order")

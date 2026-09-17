@@ -93,6 +93,26 @@ _SA_RESPONSE = {
 }
 
 
+_INV_RESPONSE = {
+    "invoice": {
+        "document_type": "INV",
+        "invoice_number": "INV-204417",
+        "invoice_date": "2026-09-02",
+        "po_number": "33336",
+        "vendor": {"name": "PIOLAX"},
+        "bill_to": {"name": "M.Y. AUTO TECH MFG. OF AMERICA"},
+        "line_items": [
+            {"line_number": 1, "part_number": "9159410A 3000", "quantity": 17500,
+             "unit_price": 0.1621, "amount": 2836.75},
+        ],
+        "totals": {"subtotal": 2836.75, "freight": 150.0, "sales_tax": None,
+                   "total": 2986.75, "balance_due": 2986.75},
+        "notes": [],
+    },
+    "confidence": {"overall": 0.93},
+}
+
+
 class TestUsPipeline:
     async def test_a_shipping_authorization_runs_end_to_end(self, pipeline):
         processing_service, database, us_client, mp = pipeline
@@ -210,6 +230,46 @@ class TestUsPipeline:
             "we do not know what the document is, so we do not assert it is wrong"
         )
 
+    async def test_an_invoice_goes_to_the_invoice_extractor_and_rules(self, pipeline):
+        processing_service, database, us_client, mp = pipeline
+        from app.services import document_service as docs
+        await _seed(database)
+
+        async def _wrong_extractor(payload):
+            raise AssertionError("a US invoice must not be read as an order or a release")
+
+        mp.setattr(us_client, "call_us_doc_classifier",
+                   lambda payload: _async({"document_type": "INV", "confidence": 0.96}))
+        mp.setattr(us_client, "call_us_so_vision_agent", _wrong_extractor)
+        mp.setattr(us_client, "call_us_sa_vision_agent", _wrong_extractor)
+        mp.setattr(us_client, "call_us_inv_vision_agent",
+                   lambda payload: _async(dict(_INV_RESPONSE)))
+
+        result = await processing_service.run_processing_pipeline("doc-1")
+
+        assert result["doc_type"] == "INV"
+        assert result["status"] == "VALID"
+        assert (await _document(database))["doc_type"] == "INV"
+
+        extraction = await docs.get_extraction_result("doc-1")
+        assert extraction["invoice_json"]["invoice"]["invoice_number"] == "INV-204417"
+        rules = {c["rule"] for c in extraction["invoice_json"]["validation"]["rule_checks"]}
+        assert "inv_totals_math_check" in rules
+        assert not any(r.startswith("so_") for r in rules)
+
+    async def test_an_invoice_that_does_not_add_up_is_invalid(self, pipeline):
+        processing_service, database, us_client, mp = pipeline
+        await _seed(database)
+
+        broken = {"invoice": dict(_INV_RESPONSE["invoice"],
+                                  totals={"subtotal": 2836.75, "total": 9999.0})}
+        mp.setattr(us_client, "call_us_doc_classifier",
+                   lambda payload: _async({"document_type": "INV", "confidence": 0.96}))
+        mp.setattr(us_client, "call_us_inv_vision_agent", lambda payload: _async(broken))
+
+        result = await processing_service.run_processing_pipeline("doc-1")
+        assert result["status"] == "INVALID"
+
     async def test_an_india_document_still_takes_the_india_path(self, pipeline):
         """The India router is stubbed to raise, so reaching it fails loudly."""
         processing_service, database, us_client, mp = pipeline
@@ -221,3 +281,25 @@ class TestUsPipeline:
 
 async def _async(value):
     return value
+
+
+class TestKeywordFallback:
+    """Used only when the classifier agent is down; an invoice must not read as an order."""
+
+    def test_invoice_wording_outweighs_the_order_words_an_invoice_also_carries(self):
+        from app.services.us_mastra_client import fallback_document_type
+        text = """INVOICE  Invoice Number: INV-204417  Invoice Date: 09/02/2026
+                  Bill To: M.Y. AUTO TECH  Ship Via: UPS  Customer PO: 33336
+                  QTY  UNIT PRICE  EXTENDED  Remit To: PO BOX 930412  Balance Due $2,986.75"""
+        assert fallback_document_type(text)["document_type"] == "INV"
+
+    def test_a_purchase_order_is_still_an_order(self):
+        from app.services.us_mastra_client import fallback_document_type
+        text = """PURCHASE ORDER  Vendor Code PIOLAX  Bill To  Ship Via BEST WAY
+                  PART NUMBER  QUANTITY  UOM  UNIT COST  EXT'D COST  Freight Terms"""
+        assert fallback_document_type(text)["document_type"] == "SO"
+
+    def test_a_release_is_still_a_release(self):
+        from app.services.us_mastra_client import fallback_document_type
+        text = "SHIPPING AUTHORIZATION SUPPLIER CODE 4283 STD PACK Ship date Delivery date W27 W28"
+        assert fallback_document_type(text)["document_type"] == "SA"

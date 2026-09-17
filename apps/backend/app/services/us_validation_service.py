@@ -1,9 +1,9 @@
-"""Deterministic rules for the two US document types.
+"""Deterministic rules for the three US document types.
 
-The India rules check a tax invoice: GSTINs, CGST/SGST/IGST consistency, a
-grand total that adds up. Neither US document is a tax invoice, so none of that
-applies and this is a separate rule set rather than a country flag threaded
-through validation_service.
+The India rules check a GST tax invoice: GSTINs, CGST/SGST/IGST consistency, a
+grand total that adds up. No US document carries GST -- not even the US
+invoice -- so none of that applies and this is a separate rule set rather than
+a country flag threaded through validation_service.
 
   * SA — a shipping authorization: a parts x week-bucket demand schedule. There
     are no prices, so the arithmetic that matters is structural: every part's
@@ -11,6 +11,9 @@ through validation_service.
   * SO — a purchase order: per-line quantity x unit cost = extended cost. The
     sample carries no totals row at all, so the totals check only fires when a
     grand total is actually present.
+  * INV — a supplier invoice: per-line quantity x unit price = amount, and a
+    totals block that has to reconcile, because the total is the figure that
+    gets paid. Sales tax is a single optional line; many invoices carry none.
 
 As with the India rules, the LLM reads and these rules decide.
 """
@@ -338,3 +341,231 @@ def _validate_so_totals(doc: dict) -> List[RuleCheck]:
         ),
         field="totals.grand_total",
     )]
+
+
+# --------------------------------------------------------------------------
+# INV — invoice
+# --------------------------------------------------------------------------
+
+def run_inv_rules(payload: Dict[str, Any]) -> List[RuleCheck]:
+    doc = payload.get("invoice", {}) or {}
+    checks: List[RuleCheck] = []
+
+    checks.extend(_validate_inv_header(doc))
+    checks.extend(_validate_inv_line_items(doc))
+    checks.extend(_validate_inv_totals(doc))
+
+    return checks
+
+
+def _date_check(field: str, label: str, value: Any, required: bool) -> Optional[RuleCheck]:
+    rule = f"inv_{field}_valid"
+    if value is None:
+        if not required:
+            return None
+        return RuleCheck(rule=rule, passed=False, message=f"No {label.lower()} was found", field=field)
+    parsed = _parse_iso_date(value)
+    return RuleCheck(
+        rule=rule,
+        passed=parsed is not None,
+        message=(
+            f"{label} {value}" if parsed else
+            f"{label} '{value}' is not a valid YYYY-MM-DD date"
+        ),
+        field=field,
+    )
+
+
+def _validate_inv_header(doc: dict) -> List[RuleCheck]:
+    invoice_number = doc.get("invoice_number")
+    checks = [RuleCheck(
+        rule="inv_invoice_number_present",
+        passed=bool(invoice_number),
+        message=(
+            f"Invoice number {invoice_number}" if invoice_number else "No invoice number was found"
+        ),
+        field="invoice_number",
+    )]
+
+    # The model's commonest identifier mistake: putting the PO it bills
+    # against in the invoice number. Paying against a PO number as if it were
+    # an invoice number is how duplicate payments slip through.
+    if invoice_number:
+        clashes = [
+            label for key, label in (("po_number", "PO number"),
+                                     ("order_number", "order number"),
+                                     ("customer_number", "customer number"))
+            if doc.get(key) and str(doc.get(key)).strip() == str(invoice_number).strip()
+        ]
+        checks.append(RuleCheck(
+            rule="inv_invoice_number_distinct",
+            passed=not clashes,
+            message=(
+                "Invoice number is distinct from the other references" if not clashes else
+                f"Invoice number {invoice_number} is the same as the {', '.join(clashes)}"
+            ),
+            field="invoice_number",
+        ))
+
+    for check in (
+        _date_check("invoice_date", "Invoice date", doc.get("invoice_date"), required=True),
+        _date_check("due_date", "Due date", doc.get("due_date"), required=False),
+    ):
+        if check is not None:
+            checks.append(check)
+
+    invoice_date = _parse_iso_date(doc.get("invoice_date"))
+    due_date = _parse_iso_date(doc.get("due_date"))
+    if invoice_date and due_date:
+        in_order = due_date >= invoice_date
+        checks.append(RuleCheck(
+            rule="inv_due_date_after_invoice_date",
+            passed=in_order,
+            message=(
+                f"Due {due_date.isoformat()}, {(due_date - invoice_date).days} day(s) after the invoice date"
+                if in_order else
+                f"Due date {due_date.isoformat()} is before the invoice date "
+                f"{invoice_date.isoformat()}; one was probably read day-first"
+            ),
+            field="due_date",
+        ))
+
+    vendor = doc.get("vendor") or {}
+    identified = bool(vendor.get("name"))
+    checks.append(RuleCheck(
+        rule="inv_vendor_identified",
+        passed=identified,
+        message=(
+            f"Invoiced by {vendor.get('name')}" if identified else
+            "The vendor who issued the invoice was not identified"
+        ),
+        field="vendor.name",
+    ))
+
+    bill_to = doc.get("bill_to") or {}
+    has_bill_to = bool(bill_to.get("name") or bill_to.get("address"))
+    checks.append(RuleCheck(
+        rule="inv_bill_to_present",
+        passed=has_bill_to,
+        message="Bill-to present" if has_bill_to else "No bill-to customer was found",
+        field="bill_to.name",
+    ))
+    return checks
+
+
+def _validate_inv_line_items(doc: dict) -> List[RuleCheck]:
+    items = doc.get("line_items") or []
+    checks = [RuleCheck(
+        rule="inv_line_items_present",
+        passed=len(items) > 0,
+        message=f"{len(items)} line item(s) found" if items else "No line items were extracted",
+        field="line_items",
+    )]
+
+    for i, item in enumerate(items):
+        quantity = _as_number(item.get("quantity"))
+        unit_price = _as_number(item.get("unit_price"))
+        amount = _as_number(item.get("amount"))
+        # A lump-sum service or freight line legitimately prints only an
+        # amount, so the arithmetic runs only when all three are present.
+        if quantity is None or unit_price is None or amount is None:
+            continue
+        expected = quantity * unit_price
+        within = abs(expected - amount) <= _line_tolerance(expected)
+        checks.append(RuleCheck(
+            rule=f"inv_line_{i + 1}_amount",
+            passed=within,
+            message=(
+                f"Line {i + 1}: {quantity} x {unit_price} = {amount}" if within else
+                f"Line {i + 1}: {quantity} x {unit_price} = {round(expected, 2)}, "
+                f"but the amount reads {amount}"
+            ),
+            field=f"line_items.{i}.amount",
+        ))
+    return checks
+
+
+def _validate_inv_totals(doc: dict) -> List[RuleCheck]:
+    totals = doc.get("totals") or {}
+    items = doc.get("line_items") or []
+    total = _as_number(totals.get("total"))
+    balance_due = _as_number(totals.get("balance_due"))
+
+    # Unlike a purchase order, an invoice exists to state what is owed, so a
+    # missing figure is a failure rather than something to skip.
+    checks = [RuleCheck(
+        rule="inv_total_present",
+        passed=total is not None or balance_due is not None,
+        message=(
+            f"Invoice total {total if total is not None else balance_due}"
+            if total is not None or balance_due is not None else
+            "No invoice total or balance due was found"
+        ),
+        field="totals.total",
+    )]
+
+    line_amounts = [_as_number(item.get("amount")) for item in items]
+    subtotal = _as_number(totals.get("subtotal"))
+    if subtotal is not None and line_amounts and all(a is not None for a in line_amounts):
+        line_sum = sum(line_amounts)
+        within = abs(line_sum - subtotal) <= _line_tolerance(subtotal)
+        checks.append(RuleCheck(
+            rule="inv_subtotal_matches_lines",
+            passed=within,
+            message=(
+                f"Line amounts add up to the subtotal {subtotal}" if within else
+                f"Line amounts add up to {round(line_sum, 2)}, but the subtotal reads {subtotal}"
+            ),
+            field="totals.subtotal",
+        ))
+
+    if total is not None:
+        base = subtotal
+        if base is None and line_amounts and all(a is not None for a in line_amounts):
+            base = sum(line_amounts)
+        if base is not None:
+            expected = (
+                base
+                - abs(_as_number(totals.get("discount")) or 0.0)
+                + (_as_number(totals.get("freight")) or 0.0)
+                + (_as_number(totals.get("sales_tax")) or 0.0)
+            )
+            within = abs(expected - total) <= _line_tolerance(expected)
+            checks.append(RuleCheck(
+                rule="inv_totals_math_check",
+                passed=within,
+                message=(
+                    f"Totals add up to {total}" if within else
+                    f"Subtotal less discount plus freight and sales tax is "
+                    f"{round(expected, 2)}, but the total reads {total}"
+                ),
+                field="totals.total",
+            ))
+
+    amount_paid = _as_number(totals.get("amount_paid"))
+    if total is not None and balance_due is not None:
+        expected = total - (amount_paid or 0.0)
+        within = abs(expected - balance_due) <= _line_tolerance(expected)
+        checks.append(RuleCheck(
+            rule="inv_balance_due_check",
+            passed=within,
+            message=(
+                f"Balance due {balance_due}" if within else
+                f"Total less amount paid is {round(expected, 2)}, "
+                f"but the balance due reads {balance_due}"
+            ),
+            field="totals.balance_due",
+        ))
+
+    negative = [
+        key for key in ("subtotal", "freight", "sales_tax", "tax_rate")
+        if (_as_number(totals.get(key)) or 0.0) < 0
+    ]
+    if negative:
+        checks.append(RuleCheck(
+            rule="inv_charges_non_negative",
+            passed=False,
+            message="Negative values found in: " + ", ".join(negative),
+            field="totals",
+        ))
+    return checks

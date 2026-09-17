@@ -29,9 +29,9 @@ const DOCUMENT_AGENT: Record<"INDIA" | "USA", Pick<Agent, "name" | "description"
       "Extracts structured data from invoice PDFs and images. Runs OCR, parses fields, validates math, and stores results in a local database.",
   },
   USA: {
-    name: "US Order & Release Agent",
+    name: "US Order, Release & Invoice Agent",
     description:
-      "Reads US purchase orders and shipping authorizations. Detects which it is, extracts the order lines or the weekly delivery schedule, and checks the arithmetic.",
+      "Reads US purchase orders, shipping authorizations and invoices. Detects which it is, extracts the order or invoice lines or the weekly delivery schedule, and checks the arithmetic.",
   },
 };
 

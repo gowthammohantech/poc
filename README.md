@@ -5,7 +5,7 @@ End-to-end document processing platform: PDF/image → OCR → structured JSON �
 Two document regimes, chosen with the **country selector in the top right**:
 
 - **India** — GST tax invoices (the original flow).
-- **USA** — purchase orders (**SO**) and shipping authorizations (**SA**).
+- **USA** — purchase orders (**SO**), shipping authorizations (**SA**) and invoices (**INV**).
 
 ## Stack
 
@@ -146,23 +146,24 @@ without it they are held in plaintext and the server logs a warning on startup.
 > There is no user model in this app, so a connected mailbox is shared by everyone
 > who can sign in to the sandbox.
 
-## US documents (SO and SA)
+## US documents (SO, SA and INV)
 
 Select **United States** in the top-right selector and the upload page, the
 documents list and the review screen all switch regime. The document's own
 country is stored on the row, so a link always opens the right review screen
 whatever the selector says.
 
-Two document types, detected automatically:
+Three document types, detected automatically:
 
 | Type | Document | Shape |
 |------|----------|-------|
 | **SO** | Purchase order | Order header, three address blocks, priced line items (`quantity × unit cost = extended cost`) |
 | **SA** | Shipping authorization | A parts × week demand schedule: `PO / Part Number / Description / Std Pack` against ~35 weekly buckets, each with a ship date and a delivery date |
+| **INV** | Invoice | Invoice number and date, due date, the PO it bills against, vendor / remit-to / bill-to / ship-to, priced lines (`quantity × unit price = amount`) and a totals block that must reconcile (`subtotal − discount + freight + sales tax = total`, `total − amount paid = balance due`). No GST fields. |
 
 The US path differs from the India one in three deliberate ways:
 
-- **Vision always.** Both documents are dense tables where the meaning of a
+- **Vision always.** All three documents are dense tables where the meaning of a
   number is the column it sits in, and Tesseract reads a grid as one paragraph.
   Tesseract still runs, for the review screen's word boxes and as a second
   opinion on a digit.
@@ -226,7 +227,7 @@ apps/
     types/           TypeScript interfaces
 mastra-service/      Mastra AI agents + workflows
   src/mastra/
-    agents/          India invoice, BRS, and US (classifier, SO, SA, validator)
+    agents/          India invoice, BRS, and US (classifier, SO, SA, INV, validator)
     prompts/         System prompts
     schemas/         Zod invoice schema
     workflows/       invoiceProcessingWorkflow
