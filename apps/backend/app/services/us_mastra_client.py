@@ -58,9 +58,15 @@ _SO_KEYWORDS = (
 # on an invoice as often as on an order, so they stay SO-only above and these
 # count double to outweigh them.
 _INV_KEYWORDS = (
-    "INVOICE NUMBER", "INVOICE NO", "INVOICE #", "INVOICE DATE", "REMIT TO",
-    "AMOUNT DUE", "BALANCE DUE", "TOTAL DUE", "PLEASE PAY",
+    "INVOICE NUMBER", "INVOICE NO", "INVOICE #", "INVOICE DATE", "INVOICE TOTAL",
+    "INVOICE AMOUNT", "THIS INVOICE", "REMIT TO", "AMOUNT DUE", "BALANCE DUE",
+    "TOTAL DUE", "PLEASE PAY", "AMOUNT ENCLOSED",
 )
+# An invoice quotes the order it bills: "Purchase Order No. 4500139581". That
+# is a reference to a purchase order, not evidence of being one, so it is
+# struck out before the SO keywords are counted.
+_ORDER_REFERENCE = re.compile(
+    r"\b(?:PURCHASE\s+ORDER|SALES\s+ORDER)\s*(?:NO\b\.?|NUMBER\b|#)")
 
 
 def _encode_images(image_paths: List[str], document_id: str) -> List[dict]:
@@ -105,7 +111,7 @@ def fallback_document_type(ocr_text: str) -> Dict[str, Any]:
     sa_hits = sum(k in upper for k in _SA_KEYWORDS)
     if re.search(r"\bW\d{1,2}\b", upper):
         sa_hits += 1
-    so_hits = sum(k in upper for k in _SO_KEYWORDS)
+    so_hits = sum(k in _ORDER_REFERENCE.sub(" ", upper) for k in _SO_KEYWORDS)
     inv_hits = 2 * sum(k in upper for k in _INV_KEYWORDS)
 
     if sa_hits > max(so_hits, inv_hits):

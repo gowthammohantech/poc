@@ -217,10 +217,11 @@ class TestInvoiceCsv:
     def test_the_line_columns_are_the_invoice_ones(self):
         rows = list(csv.reader(io.StringIO(build_inv_export_csv(_final(_inv_document())))))
         start = next(i for i, row in enumerate(rows) if row and row[0] == "Line Items")
-        assert rows[start + 1] == ["Line #", "Part Number", "Description", "Qty Ordered",
-                                   "Qty Invoiced", "UOM", "Unit Price", "Amount"]
-        assert rows[start + 2][4] == "17500"
-        assert rows[start + 2][6] == "0.1621"
+        assert rows[start + 1] == ["Line #", "Part Number", "Mfr Part Number", "Description",
+                                   "Qty Ordered", "Qty Invoiced", "UOM", "List Price",
+                                   "Unit Price", "Amount"]
+        assert rows[start + 2][5] == "17500"
+        assert rows[start + 2][8] == "0.1621"
 
     def test_what_is_owed_is_exported(self):
         text = build_inv_export_csv(_final(_inv_document()))
@@ -240,8 +241,8 @@ class TestExcel:
         wb = openpyxl.load_workbook(io.BytesIO(build_inv_export_excel(_final(_inv_document()))))
 
         assert wb.sheetnames == ["Invoice Header", "Line Items", "Notes"]
-        assert wb["Line Items"].cell(row=1, column=8).value == "Amount"
-        assert wb["Line Items"].cell(row=2, column=7).value == 0.1621
+        assert wb["Line Items"].cell(row=1, column=10).value == "Amount"
+        assert wb["Line Items"].cell(row=2, column=9).value == 0.1621
         labels = {row[0].value: row[1].value for row in wb["Invoice Header"].iter_rows()}
         assert labels["Invoice Number"] == "INV-204417"
         assert labels["Balance Due"] == 2986.75

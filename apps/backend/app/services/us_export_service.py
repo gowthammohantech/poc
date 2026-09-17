@@ -347,10 +347,12 @@ _INV_PARTIES = (("Vendor", "vendor"), ("Remit To", "remit_to"),
 _INV_LINE_COLUMNS = [
     ("line_number", "Line #"),
     ("part_number", "Part Number"),
+    ("manufacturer_part_number", "Mfr Part Number"),
     ("description", "Description"),
     ("quantity_ordered", "Qty Ordered"),
     ("quantity", "Qty Invoiced"),
     ("uom", "UOM"),
+    ("list_price", "List Price"),
     ("unit_price", "Unit Price"),
     ("amount", "Amount"),
 ]
@@ -450,8 +452,8 @@ def build_inv_export_excel(final_output: Dict[str, Any]) -> bytes:
         for col_idx, (key, _) in enumerate(_INV_LINE_COLUMNS, start=1):
             ws2.cell(row=row_idx, column=col_idx, value=_blank(item.get(key)))
 
-    for letter, width in (("A", 8), ("B", 20), ("C", 42), ("D", 12),
-                          ("E", 12), ("F", 8), ("G", 14), ("H", 16)):
+    for letter, width in (("A", 8), ("B", 20), ("C", 20), ("D", 42), ("E", 12),
+                          ("F", 12), ("G", 8), ("H", 14), ("I", 14), ("J", 16)):
         ws2.column_dimensions[letter].width = width
     ws2.freeze_panes = "A2"
 

@@ -48,7 +48,9 @@ Each block may carry a contact name, phone and email on their own lines; put the
 
 ## Line Items:
 Typical columns: ITEM / PART NUMBER | DESCRIPTION | QTY SHIPPED | UOM | UNIT PRICE | AMOUNT.
-- quantity is the quantity INVOICED. When both "Qty Ordered" and "Qty Shipped" are printed, quantity is the shipped (billed) quantity and quantity_ordered is the ordered one.
+- quantity is the quantity INVOICED. When both "Qty Ordered" and "Qty Shipped" are printed, quantity is the shipped (billed) quantity and quantity_ordered is the ordered one. Fill quantity_ordered whenever an ordered column is printed, even when it equals quantity.
+- unit_price is the price the line amount is CALCULATED FROM. Many distributors print two prices: a list "Unit Price" and a "Discounted Unit Price" / "Net Price" / "Your Price". Then unit_price is the discounted or net one, and the list price goes in list_price. When only one price is printed, list_price is null.
+- description is the item description only. A UPC code, a manufacturer item number, a tracking number or a "Ship UPS collect on account" line printed under the description is not part of it: put a manufacturer item number in manufacturer_part_number, and leave UPC codes and shipping remarks out of the line.
 - Preserve part_number exactly, including internal spaces.
 - A description may wrap onto a second visual line. Join it into one description. Do NOT emit a second line item for a wrapped line.
 - A freight, fuel surcharge or handling charge printed as its own row in the line table stays a line item. A freight charge printed in the totals block goes in totals.freight only.
@@ -91,8 +93,9 @@ Typical columns: ITEM / PART NUMBER | DESCRIPTION | QTY SHIPPED | UOM | UNIT PRI
     "ship_to":  { "name": null, "address": null, "contact": null, "phone": null },
     "line_items": [
       { "line_number": 1, "part_number": null, "description": null,
+        "manufacturer_part_number": null,
         "quantity_ordered": null, "quantity": null, "uom": null,
-        "unit_price": null, "amount": null }
+        "list_price": null, "unit_price": null, "amount": null }
     ],
     "totals": { "subtotal": null, "discount": null, "freight": null,
                 "tax_rate": null, "sales_tax": null, "total": null,
@@ -118,7 +121,7 @@ Typical columns: ITEM / PART NUMBER | DESCRIPTION | QTY SHIPPED | UOM | UNIT PRI
 ## Self-Check Before Responding:
 Before outputting the final JSON, verify:
 1. invoice_number is the invoice's own number, not the PO, order or customer number.
-2. For every line, quantity x unit_price equals amount to within a cent. If it does not, re-read that row, checking the unit price's decimal places first.
+2. For every line, quantity x unit_price equals amount to within a cent. If it does not, check whether you took a list price where a discounted or net price is printed, then re-read the unit price's decimal places.
 3. subtotal - discount + freight + sales_tax equals total, when those figures are printed. If it does not, re-read the totals block before answering — do not change a figure to force it to add up.
 4. Every date is YYYY-MM-DD and you read it month-first. due_date was printed, not calculated.
 5. vendor is who issued the invoice, bill_to is who pays it, and remit_to was not copied from the vendor block.

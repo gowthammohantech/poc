@@ -106,12 +106,16 @@ export interface UsSoData {
 export interface UsInvLineItem {
   line_number: number | null;
   part_number: string | null;
+  manufacturer_part_number: string | null;
   description: string | null;
   /** Printed only when the invoice shows ordered and shipped separately. */
   quantity_ordered: number | null;
   /** The quantity billed. */
   quantity: number | null;
   uom: string | null;
+  /** The list price, when a discounted price is printed beside it. */
+  list_price: number | null;
+  /** The price the line amount is calculated from. */
   unit_price: number | null;
   amount: number | null;
 }

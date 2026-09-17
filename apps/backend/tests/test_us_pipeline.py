@@ -293,6 +293,28 @@ class TestKeywordFallback:
                   QTY  UNIT PRICE  EXTENDED  Remit To: PO BOX 930412  Balance Due $2,986.75"""
         assert fallback_document_type(text)["document_type"] == "INV"
 
+    def test_an_invoice_whose_ocr_lost_most_of_its_labels(self):
+        """Tesseract on the MSC sample: the header table and remit-to stub came out garbled.
+
+        "Purchase Order No." is the PO the invoice bills against, and must not
+        count as order wording.
+        """
+        from app.services.us_mastra_client import fallback_document_type
+        text = """Ashland VA 23005-4870 74983441 4500139581
+                  Invoice Number Purchase Order No.
+                  Sub-Total: 865.69  Sales Tax: 0.00  Total: $872.69
+                  This invoice consolidates 3 shipments.
+                  Quantity Ordered | Quantity Shipped | Unit of Measure | Discounted Unit Price
+                  Extended Price  Ship Via UPS GROUND
+                  Customer Number Invoice Number"""
+        assert fallback_document_type(text)["document_type"] == "INV"
+
+    def test_a_purchase_order_that_quotes_its_own_number_is_still_an_order(self):
+        from app.services.us_mastra_client import fallback_document_type
+        text = """PURCHASE ORDER  Purchase Order No. 33336  Bill To  Ship Via BEST WAY
+                  UNIT COST  EXT'D COST"""
+        assert fallback_document_type(text)["document_type"] == "SO"
+
     def test_a_purchase_order_is_still_an_order(self):
         from app.services.us_mastra_client import fallback_document_type
         text = """PURCHASE ORDER  Vendor Code PIOLAX  Bill To  Ship Via BEST WAY
