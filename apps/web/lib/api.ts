@@ -53,6 +53,16 @@ export async function getDocuments() {
   return data;
 }
 
+export async function deleteDocument(documentId: string): Promise<{ deleted: number }> {
+  const { data } = await api.delete(`/api/documents/${documentId}`);
+  return data;
+}
+
+export async function deleteDocuments(documentIds: string[]): Promise<{ deleted: number }> {
+  const { data } = await api.post("/api/documents/bulk-delete", { ids: documentIds });
+  return data;
+}
+
 export async function getDocument(documentId: string) {
   const { data } = await api.get(`/api/documents/${documentId}`);
   return data;

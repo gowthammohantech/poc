@@ -1,9 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getDocuments } from "@/lib/api";
+import { Trash2 } from "lucide-react";
+import { deleteDocument, deleteDocuments, getDocuments } from "@/lib/api";
+import Modal from "@/components/Modal";
 import { useCountry } from "@/components/useCountry";
 import { normalizeCountry } from "@/lib/country";
 import SourceBadge from "@/components/SourceBadge";
@@ -66,6 +68,72 @@ function DocumentsPage() {
 
   const isUsa = country === "USA";
   const noun = isUsa ? "documents" : "invoices";
+
+  // Selection only ever covers rows on screen: switching the filter or region
+  // drops the rest, so a delete can never reach a row the user cannot see.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setSelected((prev) => {
+      const onScreen = new Set(visible.map((d) => d.id));
+      const kept = [...prev].filter((id) => onScreen.has(id));
+      return kept.length === prev.size ? prev : new Set(kept);
+    });
+  }, [visible]);
+
+  const allSelected = visible.length > 0 && visible.every((d) => selected.has(d.id));
+  const someSelected = selected.size > 0 && !allSelected;
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(visible.map((d) => d.id)));
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Ids waiting on the confirmation dialog; null while it is closed.
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const askDelete = (ids: string[]) => {
+    setDeleteError(null);
+    setPendingDelete(ids);
+  };
+
+  const closeDelete = () => {
+    if (!deleting) setPendingDelete(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      if (pendingDelete.length === 1) await deleteDocument(pendingDelete[0]);
+      else await deleteDocuments(pendingDelete);
+      const removed = new Set(pendingDelete);
+      setDocs((prev) => prev.filter((d) => !removed.has(d.id)));
+      setSelected((prev) => new Set([...prev].filter((id) => !removed.has(id))));
+      setPendingDelete(null);
+    } catch {
+      setDeleteError("Could not delete. Nothing was removed from the list; try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const pendingLabel =
+    pendingDelete?.length === 1
+      ? `"${docs.find((d) => d.id === pendingDelete[0])?.filename ?? "this document"}"`
+      : `${pendingDelete?.length ?? 0} ${noun}`;
 
   const statusColor = (s: string) => {
     if (s === "COMPLETED" || s === "VALID") return "text-green-700 bg-green-50";
@@ -131,10 +199,19 @@ function DocumentsPage() {
               </button>
             );
           })}
+          {selected.size > 0 && (
+            <button
+              onClick={() => askDelete([...selected])}
+              className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete selected ({selected.size})
+            </button>
+          )}
         </div>
 
         {loading ? (
-          <SkeletonTable columns={isUsa ? 9 : 8} rows={6} />
+          <SkeletonTable columns={isUsa ? 11 : 10} rows={6} />
         ) : loadError ? (
           <div className="bg-white rounded-xl border p-12 text-center">
             <p className="text-red-600 text-sm">{loadError}</p>
@@ -166,6 +243,16 @@ function DocumentsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
+                  <th className="w-10 py-3 pl-4 pr-0">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      aria-label={`Select all ${noun}`}
+                      className="h-4 w-4 rounded border-gray-300 accent-blue-600 cursor-pointer align-middle"
+                    />
+                  </th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Filename</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">
                     {isUsa ? "Document No" : "Invoice No"}
@@ -179,6 +266,9 @@ function DocumentsPage() {
                   <th className="text-left py-3 px-4 font-medium text-gray-700">OCR Engine</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Pages</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Created</th>
+                  <th className="w-12 py-3 px-4">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -191,8 +281,25 @@ function DocumentsPage() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") openReview(doc, e);
                     }}
-                    className="border-b last:border-0 hover:bg-blue-50/50 cursor-pointer focus:outline-none focus-visible:bg-blue-50"
+                    className={`border-b last:border-0 hover:bg-blue-50/50 cursor-pointer focus:outline-none focus-visible:bg-blue-50 ${
+                      selected.has(doc.id) ? "bg-blue-50/40" : ""
+                    }`}
                   >
+                    {/* The row itself opens the review, so clicks and keys on
+                        the controls must not bubble up to it. */}
+                    <td
+                      className="w-10 py-3 pl-4 pr-0"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(doc.id)}
+                        onChange={() => toggleOne(doc.id)}
+                        aria-label={`Select ${doc.filename}`}
+                        className="h-4 w-4 rounded border-gray-300 accent-blue-600 cursor-pointer align-middle"
+                      />
+                    </td>
                     <td className="py-3 px-4 font-medium text-gray-900 max-w-[200px] truncate">
                       {doc.filename}
                     </td>
@@ -237,6 +344,20 @@ function DocumentsPage() {
                     <td className="py-3 px-4 text-gray-400 text-xs whitespace-nowrap">
                       {new Date(doc.created_at).toLocaleDateString()}
                     </td>
+                    <td
+                      className="py-3 px-4 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => askDelete([doc.id])}
+                        aria-label={`Delete ${doc.filename}`}
+                        title="Delete"
+                        className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -244,6 +365,34 @@ function DocumentsPage() {
           </div>
         )}
       </div>
+
+      <Modal
+        open={pendingDelete !== null}
+        onClose={closeDelete}
+        title={pendingDelete?.length === 1 ? "Delete document" : `Delete ${noun}`}
+        size="md"
+      >
+        <p className="text-sm text-gray-700">
+          Delete {pendingLabel}? This removes the extracted data and uploaded files and cannot be undone.
+        </p>
+        {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={closeDelete}
+            disabled={deleting}
+            className="text-sm border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmDelete}
+            disabled={deleting}
+            className="text-sm bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }

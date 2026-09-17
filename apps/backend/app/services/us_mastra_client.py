@@ -100,6 +100,24 @@ async def _call_agent(agent: str, content: Any, timeout: float = TIMEOUT) -> Dic
 # Classification
 # --------------------------------------------------------------------------
 
+# Business rule: a document that says "invoice" anywhere -- a title, a column
+# header, "This invoice consolidates 3 shipments", even "send invoices to" on
+# an order -- is handled as an invoice. It is checked on the full OCR text of
+# every page, before the classifier is asked, and it wins over any answer the
+# classifier or the keyword fallback would give. The classifier prompt carries
+# the same rule for the case where OCR garbles the word.
+_INVOICE_WORD = re.compile(r"INVOICE", re.IGNORECASE)
+
+
+def mentions_invoice(ocr_text: str) -> bool:
+    return bool(_INVOICE_WORD.search(ocr_text or ""))
+
+
+def _invoice_by_mention() -> Dict[str, Any]:
+    return {"document_type": DOC_TYPE_INV, "confidence": 1.0,
+            "reason": "the document text mentions 'invoice'"}
+
+
 def fallback_document_type(ocr_text: str) -> Dict[str, Any]:
     """A keyword guess, used only when the classifier agent is unreachable.
 
@@ -107,6 +125,9 @@ def fallback_document_type(ocr_text: str) -> Dict[str, Any]:
     trusted the way the vision classifier can -- hence the low confidence. When
     the text points both ways or neither, say UNKNOWN rather than guessing.
     """
+    if mentions_invoice(ocr_text):
+        return _invoice_by_mention()
+
     upper = (ocr_text or "").upper()
     sa_hits = sum(k in upper for k in _SA_KEYWORDS)
     if re.search(r"\bW\d{1,2}\b", upper):
@@ -130,6 +151,9 @@ def fallback_document_type(ocr_text: str) -> Dict[str, Any]:
 async def call_us_doc_classifier(payload: Dict[str, Any]) -> Dict[str, Any]:
     document_id = payload.get("document_id", "")
     ocr_text = payload.get("ocr_text", "") or ""
+
+    if mentions_invoice(ocr_text):
+        return _invoice_by_mention()
 
     content = [{
         "type": "text",

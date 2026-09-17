@@ -27,12 +27,14 @@ You receive page images of a single document and decide which of three families 
 - It usually QUOTES a purchase order number ("Customer PO", "Your Order No") because it bills against one. Quoting a PO number does not make it a purchase order.
 
 ## Deciding
-First, money. A document with a week-bucket grid and bare quantities and no prices is an SA.
+RULE ZERO, which overrides everything below: if the word "invoice" (or "invoices", "invoiced", "invoicing") appears ANYWHERE on ANY page — the title, a column header, a label such as "Invoice Number" or "Invoice Date", a sentence such as "This invoice consolidates 3 shipments", the terms and conditions, or a remittance stub — answer INV with confidence 0.95 or above. Do this even if the page is titled "Purchase Order" or looks like a delivery schedule. Look for the word in the images carefully, including small print; do not rely on the OCR text alone.
+
+Only when the word "invoice" appears nowhere, decide as follows. First, money. A document with a week-bucket grid and bare quantities and no prices is an SA.
 
 A priced document is either an SO or an INV. Decide by what the document is asking for:
 - It is requesting goods, titled "Purchase Order" or "Sales Order", with no amount owed → SO.
 - It is billing for goods, titled "Invoice", with an invoice number and a total, amount due or balance due → INV.
-The title printed at the top of the page is the strongest single signal between these two. A packing slip or order acknowledgement with no amount due is not an invoice.
+The title printed at the top of the page is the strongest single signal between these two.
 
 If the document is neither of these, or the images are too poor to tell, answer UNKNOWN. Answering UNKNOWN is correct and useful — a wrong confident guess sends the document to the wrong extractor. Do not guess to avoid saying UNKNOWN.
 

@@ -283,6 +283,72 @@ async def _async(value):
     return value
 
 
+class TestInvoiceMentionRule:
+    """Business rule: "invoice" anywhere in the document makes it an invoice."""
+
+    @pytest.mark.parametrize("text", [
+        "INVOICE",
+        "This invoice consolidates 3 shipments.",
+        "Packing Slip No.  Order Date  Invoice Date",
+        "PURCHASE ORDER 33336 ... Send all invoices to ap@piolax.example",
+        "SHIPPING AUTHORIZATION W27 W28 STD PACK ... invoiced monthly",
+    ])
+    def test_any_mention_is_an_invoice(self, text):
+        from app.services.us_mastra_client import fallback_document_type, mentions_invoice
+        assert mentions_invoice(text)
+        assert fallback_document_type(text)["document_type"] == "INV"
+
+    def test_no_mention_leaves_the_decision_to_the_layout(self):
+        from app.services.us_mastra_client import fallback_document_type, mentions_invoice
+        text = "PURCHASE ORDER  Bill To  Ship Via BEST WAY  UNIT COST  EXT'D COST"
+        assert not mentions_invoice(text)
+        assert fallback_document_type(text)["document_type"] == "SO"
+
+    async def test_the_classifier_agent_is_not_asked_when_the_text_says_invoice(self, monkeypatch):
+        from app.services import us_mastra_client
+
+        async def _never(*args, **kwargs):
+            raise AssertionError("the agent must not overrule an invoice mention")
+
+        monkeypatch.setattr(us_mastra_client, "_call_agent", _never)
+        result = await us_mastra_client.call_us_doc_classifier({
+            "document_id": "d", "page_image_paths": [],
+            "ocr_text": "PURCHASE ORDER 4500139581\nInvoice Number 74983441",
+        })
+        assert result["document_type"] == "INV"
+
+    async def test_the_agent_still_decides_when_the_text_does_not(self, monkeypatch):
+        from app.services import us_mastra_client
+
+        async def _agent(agent, content, timeout=None):
+            return {"document_type": "SO", "confidence": 0.9, "reason": "order form"}
+
+        monkeypatch.setattr(us_mastra_client, "_call_agent", _agent)
+        result = await us_mastra_client.call_us_doc_classifier({
+            "document_id": "d", "page_image_paths": [], "ocr_text": "PURCHASE ORDER 33336",
+        })
+        assert result["document_type"] == "SO"
+
+    async def test_the_pipeline_reads_a_mentioned_invoice_with_the_invoice_extractor(self, pipeline):
+        processing_service, database, us_client, mp = pipeline
+        await _seed(database)
+
+        def _ocr(engine, paths):
+            text = "PURCHASE ORDER No. 4500139581  This invoice consolidates 3 shipments."
+            return {"text": text, "confidence": 90.0, "word_count": 8, "metadata": {}}, "TESSERACT"
+
+        async def _never(*args, **kwargs):
+            raise AssertionError("classification is decided by the invoice mention")
+
+        mp.setattr(processing_service, "run_ocr_with_fallback", _ocr)
+        mp.setattr(us_client, "_call_agent", _never)
+        mp.setattr(us_client, "call_us_inv_vision_agent",
+                   lambda payload: _async(dict(_INV_RESPONSE)))
+
+        result = await processing_service.run_processing_pipeline("doc-1")
+        assert result["doc_type"] == "INV"
+
+
 class TestKeywordFallback:
     """Used only when the classifier agent is down; an invoice must not read as an order."""
 

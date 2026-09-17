@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.services import document_service as docs
 from app.services.processing_service import ProcessingError, run_processing_pipeline
@@ -18,6 +19,24 @@ async def list_documents():
     """List documents the pipeline has finished with, newest first."""
     rows = await docs.get_all_documents()  # already ordered created_at DESC
     return [row for row in rows if row.get("status") in TERMINAL_STATUSES]
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[str] = Field(min_length=1)
+
+
+# A POST rather than a DELETE with a body: proxies and clients are free to drop
+# a DELETE body, and losing the id list silently is not an option.
+@router.post("/bulk-delete")
+async def bulk_delete_documents(body: BulkDeleteRequest):
+    return {"deleted": await docs.delete_documents(body.ids)}
+
+
+@router.delete("/{document_id}")
+async def delete_document(document_id: str):
+    if not await docs.get_document(document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"deleted": await docs.delete_document(document_id)}
 
 
 @router.get("/{document_id}")

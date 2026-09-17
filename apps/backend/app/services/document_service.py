@@ -1,11 +1,13 @@
 import uuid
 import json
+import shutil
 from datetime import datetime
 from typing import Optional
 import aiosqlite
 
 from app.db.database import get_db
 from app.schemas.document_schema import DocumentCreate
+from app.services.file_storage_service import STORAGE_BASE
 
 
 async def create_document(data: DocumentCreate) -> str:
@@ -84,6 +86,49 @@ async def get_all_documents() -> list:
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+
+# Every table hanging off `documents`. The foreign keys carry no ON DELETE
+# CASCADE, so these have to go before the document row itself.
+_DOCUMENT_CHILD_TABLES = (
+    "document_pages", "ocr_results", "extraction_results",
+    "validation_results", "final_outputs", "processing_logs",
+)
+
+
+async def delete_documents(document_ids: list[str]) -> int:
+    """Remove documents with everything derived from them, rows and files.
+
+    Nothing is kept to mark a mailbox attachment as already seen, so the next
+    connector sync is free to ingest it again.
+    """
+    ids = list(dict.fromkeys(document_ids))
+    if not ids:
+        return 0
+    placeholders = ", ".join("?" for _ in ids)
+    async with get_db() as db:
+        for table in _DOCUMENT_CHILD_TABLES:
+            await db.execute(f"DELETE FROM {table} WHERE document_id IN ({placeholders})", ids)
+        # Sync history stays, but no longer points at a document that is gone.
+        await db.execute(
+            f"UPDATE connector_sync_items SET document_id = NULL WHERE document_id IN ({placeholders})",
+            ids,
+        )
+        cursor = await db.execute(f"DELETE FROM documents WHERE id IN ({placeholders})", ids)
+        deleted = cursor.rowcount
+        await db.commit()
+
+    # Files only after the rows are committed: a failed delete must not leave a
+    # document whose pages have vanished.
+    for doc_id in ids:
+        folder = STORAGE_BASE / doc_id
+        if folder.resolve().parent == STORAGE_BASE.resolve():
+            shutil.rmtree(folder, ignore_errors=True)
+    return deleted
+
+
+async def delete_document(document_id: str) -> int:
+    return await delete_documents([document_id])
 
 
 async def add_page(document_id: str, page_number: int, original_path: str,
