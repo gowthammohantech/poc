@@ -62,10 +62,16 @@ _DOCUMENT_NUMBER_KEYS = ("invoice_number", "order_number", "release_number")
 
 
 def _document_number_sql(json_column: str) -> str:
-    return "COALESCE(" + ", ".join(
-        f"NULLIF(TRIM(json_extract({json_column}, '$.invoice.{key}')), '')"
-        for key in _DOCUMENT_NUMBER_KEYS
-    ) + ")"
+    def value(key: str) -> str:
+        return f"NULLIF(TRIM(json_extract({json_column}, '$.invoice.{key}')), '')"
+
+    # A purchase order can also print an invoice number, but it is still known
+    # by its PO number, so that one goes first for SOs.
+    so_first = (
+        f"CASE WHEN json_extract({json_column}, '$.invoice.document_type') = 'SO' "
+        f"THEN {value('order_number')} END"
+    )
+    return "COALESCE(" + ", ".join([so_first, *map(value, _DOCUMENT_NUMBER_KEYS)]) + ")"
 
 
 async def get_all_documents() -> list:

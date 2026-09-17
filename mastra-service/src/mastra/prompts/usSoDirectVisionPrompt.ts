@@ -37,6 +37,7 @@ The table columns are typically PART NUMBER | DESCRIPTION | QUANTITY | UOM | DUE
 ## Extraction Rules:
 - Extract ONLY what is visible in the images. Use null for anything not found — NEVER hallucinate or guess.
 - currency defaults to "USD" for a US purchase order when none is stated.
+- invoice_number is filled ONLY when the page prints a separate invoice number (e.g. "Invoice #", "Invoice No"). Never copy the PO number into it; if no invoice number is printed, it is null.
 - The received stamp usually reads "By SOMEONE at 8:35 am, Aug 12, 2026" — put the name in received_by and the timestamp in received_at as YYYY-MM-DDTHH:MM.
 - line_items and notes must be arrays, empty [] if nothing is found.
 
@@ -51,6 +52,7 @@ The table columns are typically PART NUMBER | DESCRIPTION | QUANTITY | UOM | DUE
   "invoice": {
     "document_type": "SO",
     "order_number": "string|null",
+    "invoice_number": "string|null",
     "order_date": "YYYY-MM-DD|null",
     "order_datetime_raw": "string|null",
     "received_by": "string|null",

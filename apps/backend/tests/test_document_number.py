@@ -77,3 +77,14 @@ async def test_no_extraction_or_a_blank_number_is_null(service):
     await _seed(database, "blank", extracted={"invoice_number": "  "})
 
     assert await _numbers(document_service) == {"unprocessed": None, "blank": None}
+
+
+async def test_a_purchase_order_keeps_its_po_number_beside_an_invoice_number(service):
+    database, document_service = service
+    await _seed(database, "so", extracted={"document_type": "SO", "order_number": "PO-42",
+                                           "invoice_number": "INV-9"})
+    await _seed(database, "so-no-po", extracted={"document_type": "SO", "invoice_number": "INV-10"})
+    await _seed(database, "inv", extracted={"document_type": "INV", "invoice_number": "INV-11",
+                                            "order_number": "SO-5"})
+
+    assert await _numbers(document_service) == {"so": "PO-42", "so-no-po": "INV-10", "inv": "INV-11"}

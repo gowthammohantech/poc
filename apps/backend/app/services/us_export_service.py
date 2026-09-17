@@ -228,6 +228,7 @@ def build_so_export_csv(final_output: Dict[str, Any]) -> str:
 
     writer.writerow(["Purchase Order"])
     writer.writerow(["PO Number", _blank(doc.get("order_number"))])
+    writer.writerow(["Invoice Number", _blank(doc.get("invoice_number"))])
     writer.writerow(["Order Date", _blank(doc.get("order_date"))])
     writer.writerow(["Currency", _blank(doc.get("currency"))])
     writer.writerow(["Payment Terms", _blank(doc.get("payment_terms"))])
@@ -278,6 +279,7 @@ def build_so_export_excel(final_output: Dict[str, Any]) -> bytes:
 
     info: List[tuple] = [
         ("PO Number", doc.get("order_number")),
+        ("Invoice Number", doc.get("invoice_number")),
         ("Order Date", doc.get("order_date")),
         ("Currency", doc.get("currency")),
         ("Payment Terms", doc.get("payment_terms")),

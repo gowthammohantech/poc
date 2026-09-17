@@ -378,6 +378,9 @@ function SoSections({ doc, control, register, confidence }: SectionProps<UsSoDat
           <Field label="PO Number">
             <input className={inputCls} {...register("order_number")} />
           </Field>
+          <Field label="Invoice Number">
+            <input className={inputCls} {...register("invoice_number")} />
+          </Field>
           <Field label="Order Date">
             <input className={inputCls} {...register("order_date")} />
           </Field>

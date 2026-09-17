@@ -86,6 +86,8 @@ export interface UsSoTotals {
 export interface UsSoData {
   document_type: "SO";
   order_number: string | null;
+  /** Printed on some purchase orders alongside the PO number; null when absent. */
+  invoice_number?: string | null;
   order_date: string | null;
   order_datetime_raw: string | null;
   received_by: string | null;
