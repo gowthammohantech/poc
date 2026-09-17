@@ -13,6 +13,7 @@ async def upload_invoice(
     must_use_llm: bool = Form(False),
     source: str = Form(ingest_service.SOURCE_MANUAL),
     country: str = Form(ingest_service.COUNTRY_INDIA),
+    doc_type: str = Form(None),
 ):
     try:
         result = await ingest_service.ingest_upload_file(
@@ -21,6 +22,7 @@ async def upload_invoice(
             must_use_llm=must_use_llm,
             source=source,
             country=country,
+            doc_type=doc_type,
         )
     except ingest_service.IngestError as e:
         if e.stage == "VALIDATE":

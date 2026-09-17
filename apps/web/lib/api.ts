@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import type { Country } from "@/lib/country";
-import type { UsReviewData } from "@/types/usDocument";
+import type { UsDocType, UsReviewData } from "@/types/usDocument";
 
 // Keep browser requests on the frontend origin. The Next.js route handler proxies
 // them to FastAPI using the server-only FASTAPI_URL environment variable.
@@ -16,7 +16,8 @@ export async function uploadInvoice(
   file: File,
   expectedFields?: string,
   mustUseLlm?: boolean,
-  country?: Country
+  country?: Country,
+  docType?: Exclude<UsDocType, "UNKNOWN">
 ) {
   const form = new FormData();
   form.append("file", file);
@@ -25,6 +26,7 @@ export async function uploadInvoice(
   // Omitted rather than defaulted, so a caller that predates the country
   // dimension still posts exactly the form the backend used to receive.
   if (country) form.append("country", country);
+  if (docType) form.append("doc_type", docType);
   const { data } = await api.post("/api/documents/upload", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });

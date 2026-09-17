@@ -7,6 +7,15 @@ import { uploadInvoice, processDocument } from "@/lib/api";
 import FileDropzone from "@/components/FileDropzone";
 import { useCountry } from "@/components/useCountry";
 import type { Country } from "@/lib/country";
+import type { UsDocType } from "@/types/usDocument";
+
+type UploadDocType = Exclude<UsDocType, "UNKNOWN">;
+
+const US_DOC_TYPE_OPTIONS: { value: UploadDocType; label: string }[] = [
+  { value: "INV", label: "Invoice (INV)" },
+  { value: "SO", label: "Purchase Order (SO)" },
+  { value: "SA", label: "Shipping Authorization (SA)" },
+];
 
 interface RegimeCopy {
   heading: string;
@@ -47,7 +56,7 @@ const COPY: Record<Country, RegimeCopy> = {
   USA: {
     heading: "US Order, Release & Invoice Agent",
     blurb:
-      "Upload a US purchase order, shipping authorization or invoice. The agent works out which it is and extracts it accordingly.",
+      "Upload a US purchase order, shipping authorization or invoice, pick its type, and the agent extracts it accordingly.",
     dropLabel: "Drag & drop your purchase order, release or invoice here, or click to browse",
     expectedFieldsPlaceholder: "e.g., PO number: 33336, vendor: PIOLAX, supplier code: 4283",
     submitLabel: "Upload & Process Document",
@@ -55,14 +64,14 @@ const COPY: Record<Country, RegimeCopy> = {
     steps: [
       { step: 1, title: "Upload & Convert", desc: "PDF or image converted to page images" },
       { step: 2, title: "Reference OCR", desc: "Tesseract text kept as a second opinion on digits" },
-      { step: 3, title: "Type Detection", desc: "Classified as a purchase order (SO), a release (SA) or an invoice (INV)" },
+      { step: 3, title: "Document Type", desc: "Purchase order (SO), release (SA) or invoice (INV), as chosen at upload" },
       { step: 4, title: "Extraction", desc: "Order or invoice lines, or the parts × week delivery schedule" },
       { step: 5, title: "Validation", desc: "Line and invoice-total arithmetic, and schedule alignment, checked in code" },
       { step: 6, title: "Human Review", desc: "Reviewer confirms and exports results" },
     ],
     agents: [
       { icon: "🧭", name: "Document Classifier",
-        desc: "Tells a purchase order, a weekly delivery release and an invoice apart by their layout" },
+        desc: "Works out the type by layout when a document arrives without one, such as from a mailbox connector" },
       { icon: "🤖", name: "Extraction Agent",
         desc: "Reads order or invoice lines, or the parts × week quantity grid, straight from the page images" },
       { icon: "✅", name: "Validation Agent",
@@ -76,6 +85,7 @@ export default function InvoiceOcrPage() {
   const [file, setFile] = useState<File | null>(null);
   const [expectedFields, setExpectedFields] = useState("");
   const [mustUseLlm, setMustUseLlm] = useState(false);
+  const [docType, setDocType] = useState<UploadDocType>("INV");
   const { country } = useCountry();
   const copy = COPY[country];
   const [status, setStatus] = useState<"idle" | "uploading" | "processing" | "error">("idle");
@@ -87,7 +97,13 @@ export default function InvoiceOcrPage() {
     try {
       setStatus("uploading");
       setMessage("Uploading and converting document...");
-      const uploadResult = await uploadInvoice(file, expectedFields || undefined, mustUseLlm, country);
+      const uploadResult = await uploadInvoice(
+        file,
+        expectedFields || undefined,
+        mustUseLlm,
+        country,
+        country === "USA" ? docType : undefined
+      );
       const id = uploadResult.document_id;
       setStatus("processing");
       setMessage(
@@ -112,6 +128,26 @@ export default function InvoiceOcrPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
+          {country === "USA" && (
+            <div>
+              <label htmlFor="docType" className="block text-sm font-medium text-gray-700 mb-1">
+                Document Type
+              </label>
+              <select
+                id="docType"
+                value={docType}
+                onChange={(e) => setDocType(e.target.value as UploadDocType)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {US_DOC_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <FileDropzone
             accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff,.tif,.bmp,.heic,.heif"
             file={file}
@@ -142,8 +178,8 @@ export default function InvoiceOcrPage() {
             // engine choice to force. Say what it does instead of offering a
             // toggle that would do nothing.
             <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-              US documents are read directly from the page images, and whether this is a
-              purchase order, a shipping authorization or an invoice is detected automatically.
+              US documents are read directly from the page images and extracted as the
+              document type selected above.
             </p>
           ) : (
             <div className="flex items-center gap-2">

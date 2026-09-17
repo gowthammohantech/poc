@@ -41,6 +41,10 @@ COUNTRY_INDIA = "INDIA"
 COUNTRY_USA = "USA"
 VALID_COUNTRIES = {COUNTRY_INDIA, COUNTRY_USA}
 
+# The US document types a person can pick at upload. Setting one skips the
+# classifier; anything else leaves doc_type empty so the classifier decides.
+US_DOC_TYPES = {"SO", "SA", "INV"}
+
 
 class IngestError(Exception):
     """A document could not be taken in. `stage` names the step that failed."""
@@ -84,6 +88,14 @@ def normalize_country(country: Optional[str]) -> str:
     return candidate if candidate in VALID_COUNTRIES else COUNTRY_INDIA
 
 
+def normalize_doc_type(doc_type: Optional[str], country: str) -> Optional[str]:
+    """Only a US document carries a type; an unrecognised one is dropped."""
+    if normalize_country(country) != COUNTRY_USA:
+        return None
+    candidate = (doc_type or "").strip().upper()
+    return candidate if candidate in US_DOC_TYPES else None
+
+
 async def ingest_bytes(
     *,
     filename: str,
@@ -96,6 +108,7 @@ async def ingest_bytes(
     source_ref: Optional[str] = None,
     source_metadata: Optional[dict] = None,
     country: str = COUNTRY_INDIA,
+    doc_type: Optional[str] = None,
 ) -> IngestResult:
     """Save, split into pages, preprocess and score a document.
 
@@ -112,6 +125,7 @@ async def ingest_bytes(
         must_use_llm=must_use_llm,
         source=normalize_source(source),
         country=normalize_country(country),
+        doc_type=normalize_doc_type(doc_type, country),
         source_connector_id=source_connector_id,
         source_ref=source_ref,
         source_metadata=json.dumps(source_metadata) if source_metadata else None,
@@ -187,6 +201,7 @@ async def ingest_upload_file(
     must_use_llm: bool = False,
     source: str = SOURCE_MANUAL,
     country: str = COUNTRY_INDIA,
+    doc_type: Optional[str] = None,
 ) -> IngestResult:
     filename = file.filename or "upload"
     validate_ingest_type(filename, file.content_type)
@@ -198,4 +213,5 @@ async def ingest_upload_file(
         must_use_llm=must_use_llm,
         source=source,
         country=country,
+        doc_type=doc_type,
     )
