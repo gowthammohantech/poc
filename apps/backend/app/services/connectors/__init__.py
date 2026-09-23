@@ -37,7 +37,14 @@ _REGISTRY: dict[str, MailConnector] = {
 }
 
 # Listed so the UI can show it as coming soon before the adapter exists.
-_PLANNED = [{"provider": "OUTLOOK", "label": "Outlook", "configured": False, "enabled": False}]
+# Hidden from the UI for now; restore the entry to bring the card back.
+# _PLANNED = [{"provider": "OUTLOOK", "label": "Outlook", "configured": False, "enabled": False}]
+_PLANNED: list[dict] = []
+
+# Providers that stay in the registry — so existing connections keep syncing —
+# but are not offered as cards in the UI. Drop "FAKE" here to show the sample
+# mailbox again.
+_HIDDEN_FROM_UI = {"FAKE"}
 
 
 def get_connector(provider: str) -> MailConnector:
@@ -57,4 +64,5 @@ def available_providers() -> list[dict]:
             "enabled": True,
         }
         for connector in _REGISTRY.values()
+        if connector.provider not in _HIDDEN_FROM_UI
     ] + _PLANNED
