@@ -7,7 +7,7 @@ The platform is three services that must all be running:
 | Service | Tech | Port | Directory | Talks to |
 |---|---|---|---|---|
 | **Web** (UI) | Next.js 16 + React 19 | 3000 | `apps/web` | Backend (via `/api/backend` proxy) |
-| **Backend** (API + OCR) | FastAPI + Python 3.12 | 8000 | `apps/backend` | Mastra, Tesseract, PaddleOCR, SQLite |
+| **Backend** (API + OCR) | FastAPI + Python 3.12 | 8000 | `apps/backend` | Mastra, Tesseract, PaddleOCR, MongoDB |
 | **Mastra** (AI agents) | Mastra + `@ai-sdk/openai` | 4111 | `mastra-service` | OpenAI API |
 
 Request flow: Browser → Web (3000) → Backend (8000) → Mastra (4111) → OpenAI.
@@ -167,7 +167,8 @@ The backend works with no `.env` on an Apple Silicon Mac with Homebrew. Create t
 # FRONTEND_URL=http://localhost:3000      # extra CORS origin (localhost:3000 is already allowed)
 
 # --- Storage ---
-# DB_PATH=invoice_ocr.db                  # SQLite file, relative to apps/backend
+# MONGODB_URI=mongodb://localhost:27017   # connection string
+# MONGO_DB_NAME=invoice_ocr               # database name
 # STORAGE_BASE=storage/uploads            # uploaded files, relative to apps/backend
 # PDF_RENDER_DPI=300
 ```
@@ -248,7 +249,7 @@ open http://localhost:4111
 open http://localhost:3000
 ```
 
-On first backend start you should see `invoice_ocr.db` and `storage/uploads/` created inside `apps/backend/`.
+On first backend start the `invoice_ocr` database is created with its indexes, and `storage/uploads/` appears inside `apps/backend/`. The backend needs a reachable MongoDB; without one it fails on startup.
 
 ---
 
@@ -314,7 +315,7 @@ cd apps/backend
 .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-**Docker** — each service has its own `Dockerfile` (`apps/backend`, `apps/web`, `mastra-service`); `railway.json` files exist for Railway deploys. The backend image bundles Tesseract + Poppler and expects `DB_PATH` / `STORAGE_BASE` under `/app/data`, so mount a volume there.
+**Docker** — each service has its own `Dockerfile` (`apps/backend`, `apps/web`, `mastra-service`); `railway.json` files exist for Railway deploys. The backend image bundles Tesseract + Poppler, reads `MONGODB_URI` from the environment, and keeps uploads under `STORAGE_BASE=/app/data/...`, so mount a volume there.
 
 ---
 
@@ -333,7 +334,7 @@ cd apps/backend
 | Mastra logs `401` / `Incorrect API key` | Bad or missing `OPENAI_API_KEY` in `mastra-service/.env`. |
 | `.heic` upload rejected | `pillow_heif` failed to import — `brew install libheif` (macOS) or `apt install libheif-dev`, then reinstall requirements. |
 | Port already in use | `lsof -i :3000` / `:8000` / `:4111` and kill the old process. |
-| Want a clean slate | Stop services, then delete `apps/backend/invoice_ocr.db` and `apps/backend/storage/`. They're recreated on next start. |
+| Want a clean slate | Stop services, then drop the `invoice_ocr` database and delete `apps/backend/storage/`. Both are recreated on next start. |
 
 ---
 
@@ -354,9 +355,15 @@ Add the same repo **three times** as separate services and set each one's Root D
 | `mastra` | `mastra-service` | Dockerfile via `railway.json` | `npm run start` | 4111 |
 | `web` | `apps/web` | Dockerfile via `railway.json` | `npm run start` | 3000 |
 
-**2. Add a Volume to `backend`** mounted at **`/app/data`**. SQLite and uploads live on disk; the Dockerfile
-already sets `DB_PATH=/app/data/invoice_ocr.db` and `STORAGE_BASE=/app/data/storage/uploads`.
-Keep `backend` at **1 replica** — SQLite cannot be shared across instances.
+**2. Add a Volume to `backend`** mounted at **`/app/data`**. The database is remote now, but uploaded
+originals and page renders still live on disk and the records only hold paths to them, so without a volume a
+redeploy leaves documents pointing at files that are gone. The Dockerfile already sets
+`STORAGE_BASE=/app/data/storage/uploads`. Keep `backend` at **1 replica** — a Railway volume cannot be shared
+across instances, and the OAuth refresh lock is per-process.
+
+Set **`MONGODB_URI`** (and optionally `MONGO_DB_NAME`) on the backend service, plus
+**`CONNECTOR_TOKEN_SECRET`** — without it Gmail OAuth tokens are stored as plaintext, which now means
+plaintext in a hosted database.
 
 **3. Environment variables.** Use Railway's private network so backend and Mastra are never public.
 

@@ -6,64 +6,29 @@ snapshot of what each sync saw in the mailbox, while the invoice counts track
 documents that keep moving through the pipeline afterwards.
 """
 
-import importlib
-import tempfile
 import uuid
-from pathlib import Path
 
-import aiosqlite
 import pytest
+
+from app.services import connector_sync_service
 
 
 @pytest.fixture
-async def sync_service(monkeypatch):
-    """The sync service bound to a throwaway database."""
-    tmp = Path(tempfile.mkdtemp(prefix="stats-test-")) / "test.db"
-    monkeypatch.setenv("DB_PATH", str(tmp))
-    from app.db import database
-    importlib.reload(database)
-    await database.init_db()
-
-    from app.services import connector_sync_service
-    importlib.reload(connector_sync_service)
-    yield connector_sync_service
-
-    monkeypatch.delenv("DB_PATH", raising=False)
-    importlib.reload(database)
-
-
-def _db_path() -> str:
-    from app.db import database
-    return database.DB_PATH
-
-
-async def _insert_run(connection_id="conn-1", started_at="2026-01-01T00:00:00", **counters):
-    run_id = str(uuid.uuid4())
-    columns = ", ".join(counters)
-    placeholders = ", ".join("?" for _ in counters)
-    async with aiosqlite.connect(_db_path()) as db:
-        await db.execute(
-            f"""INSERT INTO connector_sync_runs
-                (id, connection_id, status, started_at{',' if columns else ''} {columns})
-                VALUES (?, ?, 'COMPLETED', ?{',' if columns else ''} {placeholders})""",
-            (run_id, connection_id, started_at, *counters.values()),
+def add_document(make_document):
+    async def _add(status, connection_id="conn-1"):
+        return await make_document(
+            status=status,
+            source="CONNECTOR",
+            source_connector_id=connection_id,
+            source_ref=str(uuid.uuid4()),
         )
-        await db.commit()
-    return run_id
+
+    return _add
 
 
-async def _insert_document(status, connection_id="conn-1"):
-    async with aiosqlite.connect(_db_path()) as db:
-        await db.execute(
-            """INSERT INTO documents (id, filename, status, source, source_connector_id, source_ref)
-               VALUES (?, 'invoice.pdf', ?, 'CONNECTOR', ?, ?)""",
-            (str(uuid.uuid4()), status, connection_id, str(uuid.uuid4())),
-        )
-        await db.commit()
+async def test_a_connection_that_has_never_synced_reports_zeroes(mongo_db):
+    stats = await connector_sync_service.get_connection_stats("conn-1")
 
-
-async def test_a_connection_that_has_never_synced_reports_zeroes(sync_service):
-    stats = await sync_service.get_connection_stats("conn-1")
     assert stats["runs"] == 0
     assert stats["last_run"] is None
     assert stats["totals"]["messages_scanned"] == 0
@@ -72,13 +37,20 @@ async def test_a_connection_that_has_never_synced_reports_zeroes(sync_service):
     }
 
 
-async def test_totals_sum_across_every_run(sync_service):
-    await _insert_run(messages_scanned=25, messages_with_attachments=6,
-                      attachments_found=8, documents_processed=5)
-    await _insert_run(messages_scanned=10, messages_with_attachments=2,
-                      attachments_found=3, documents_processed=3, documents_failed=1)
+async def test_every_counter_is_present_even_with_no_runs(mongo_db):
+    """The UI reads these by name; a missing key is a crash, not a zero."""
+    totals = (await connector_sync_service.get_connection_stats("conn-1"))["totals"]
 
-    stats = await sync_service.get_connection_stats("conn-1")
+    assert set(totals) == set(connector_sync_service._TOTAL_COLUMNS)
+
+
+async def test_totals_sum_across_every_run(mongo_db, make_run):
+    await make_run(messages_scanned=25, messages_with_attachments=6,
+                   attachments_found=8, documents_processed=5)
+    await make_run(messages_scanned=10, messages_with_attachments=2,
+                   attachments_found=3, documents_processed=3, documents_failed=1)
+
+    stats = await connector_sync_service.get_connection_stats("conn-1")
 
     assert stats["runs"] == 2
     assert stats["totals"]["messages_scanned"] == 35
@@ -88,25 +60,25 @@ async def test_totals_sum_across_every_run(sync_service):
     assert stats["totals"]["documents_failed"] == 1
 
 
-async def test_skips_are_totalled_by_reason(sync_service):
+async def test_skips_are_totalled_by_reason(mongo_db, make_run):
     """One number for every skip cannot say why anything was passed over, which
     is how a filter bug hid: dropped invoices read as unsupported files."""
-    await _insert_run(skipped_unsupported=2, skipped_inline=3, skipped_duplicates=1)
-    await _insert_run(skipped_unsupported=1, skipped_inline=4)
+    await make_run(skipped_unsupported=2, skipped_inline=3, skipped_duplicates=1)
+    await make_run(skipped_unsupported=1, skipped_inline=4)
 
-    totals = (await sync_service.get_connection_stats("conn-1"))["totals"]
+    totals = (await connector_sync_service.get_connection_stats("conn-1"))["totals"]
 
     assert totals["skipped_unsupported"] == 3
     assert totals["skipped_inline"] == 7
     assert totals["skipped_duplicates"] == 1
 
 
-async def test_last_run_is_the_most_recently_started(sync_service):
-    await _insert_run(started_at="2026-01-01T00:00:00", messages_scanned=1)
-    newest = await _insert_run(started_at="2026-03-01T00:00:00", messages_scanned=2)
-    await _insert_run(started_at="2026-02-01T00:00:00", messages_scanned=3)
+async def test_last_run_is_the_most_recently_started(mongo_db, make_run):
+    await make_run(started_at="2026-01-01T00:00:00", messages_scanned=1)
+    newest = await make_run(started_at="2026-03-01T00:00:00", messages_scanned=2)
+    await make_run(started_at="2026-02-01T00:00:00", messages_scanned=3)
 
-    stats = await sync_service.get_connection_stats("conn-1")
+    stats = await connector_sync_service.get_connection_stats("conn-1")
 
     assert stats["last_run"]["id"] == newest
 
@@ -114,18 +86,20 @@ async def test_last_run_is_the_most_recently_started(sync_service):
 @pytest.mark.parametrize(
     "status", ["UPLOADED", "CONVERTING", "COMPLEXITY_ANALYZED", "OCR_RUNNING", "VALIDATING"]
 )
-async def test_documents_still_in_the_pipeline_count_as_in_progress(sync_service, status):
-    await _insert_document(status)
-    stats = await sync_service.get_connection_stats("conn-1")
+async def test_documents_still_in_the_pipeline_count_as_in_progress(mongo_db, add_document, status):
+    await add_document(status)
+
+    stats = await connector_sync_service.get_connection_stats("conn-1")
+
     assert stats["invoices"]["in_progress"] == 1
     assert stats["invoices"]["total"] == 1
 
 
-async def test_settled_documents_are_split_by_outcome(sync_service):
+async def test_settled_documents_are_split_by_outcome(mongo_db, add_document):
     for status in ("VALID", "COMPLETED", "NEEDS_REVIEW", "INVALID", "FAILED"):
-        await _insert_document(status)
+        await add_document(status)
 
-    invoices = (await sync_service.get_connection_stats("conn-1"))["invoices"]
+    invoices = (await connector_sync_service.get_connection_stats("conn-1"))["invoices"]
 
     assert invoices["total"] == 5
     assert invoices["in_progress"] == 0
@@ -135,24 +109,21 @@ async def test_settled_documents_are_split_by_outcome(sync_service):
     assert invoices["failed"] == 1     # never reached an extraction
 
 
-async def test_another_connections_work_is_not_counted(sync_service):
-    await _insert_run(connection_id="conn-2", messages_scanned=99)
-    await _insert_document("VALID", connection_id="conn-2")
+async def test_another_connections_work_is_not_counted(mongo_db, make_run, add_document):
+    await make_run(connection_id="conn-2", messages_scanned=99)
+    await add_document("VALID", connection_id="conn-2")
 
-    stats = await sync_service.get_connection_stats("conn-1")
+    stats = await connector_sync_service.get_connection_stats("conn-1")
 
     assert stats["runs"] == 0
     assert stats["totals"]["messages_scanned"] == 0
     assert stats["invoices"]["total"] == 0
 
 
-async def test_manual_uploads_are_not_counted(sync_service):
+async def test_manual_uploads_are_not_counted(mongo_db, make_document):
     """They have no source_connector_id, so they belong to no connection."""
-    async with aiosqlite.connect(_db_path()) as db:
-        await db.execute(
-            "INSERT INTO documents (id, filename, status, source) VALUES (?, 'x.pdf', 'VALID', 'MANUAL')",
-            (str(uuid.uuid4()),),
-        )
-        await db.commit()
+    await make_document(source="MANUAL")
 
-    assert (await sync_service.get_connection_stats("conn-1"))["invoices"]["total"] == 0
+    stats = await connector_sync_service.get_connection_stats("conn-1")
+
+    assert stats["invoices"]["total"] == 0

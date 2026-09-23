@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.db.database import init_db
+from app.db.mongo import close_client, ensure_indexes, ping
 from app.api.upload_routes import router as upload_router
 from app.api.document_routes import router as document_router
 from app.api.review_routes import router as review_router
@@ -32,11 +32,16 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    # Indexes and validators, not a schema: creating them is idempotent, so
+    # this runs on every boot the way the old migration scripts did.
+    await ensure_indexes()
     # Sync runs live in this process, so anything still marked RUNNING was
     # abandoned by a restart. Close them out or the UI waits forever.
     await reap_stale_runs()
-    yield
+    try:
+        yield
+    finally:
+        await close_client()
 
 
 app = FastAPI(
@@ -82,4 +87,10 @@ app.include_router(connector_router, prefix="/api/connectors", tags=["Connectors
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "invoice-ocr-backend"}
+    # Liveness stays independent of the database: a Mongo outage should be
+    # visible here, not turn into a restart loop against the deploy policy.
+    return {
+        "status": "ok",
+        "service": "invoice-ocr-backend",
+        "database": "ok" if await ping() else "unreachable",
+    }

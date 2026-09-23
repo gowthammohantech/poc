@@ -109,10 +109,10 @@ OpenText does. If SAP certification is a hard requirement, that's a real point i
 their favour."
 
 **9. "How many invoices a day can it handle?"**
-"**[Concede]** Today's build is a single-node sandbox — SQLite, local storage.
-Sized for a pilot, not your full volume. The pipeline is stateless per document,
-so scaling is the well-trodden path: Postgres, object storage, a job queue,
-horizontal workers. I'd rather show you a working pilot in three weeks than a
+"**[Concede]** Today's build is a single-node sandbox — one backend instance, uploads
+on a local volume. Sized for a pilot, not your full volume. The database is MongoDB and
+already external; the pipeline is stateless per document, so scaling is the well-trodden
+path: object storage, a job queue, horizontal workers. I'd rather show you a working pilot in three weeks than a
 scale claim I can't back."
 
 **10. "How do you handle users and access control?"**

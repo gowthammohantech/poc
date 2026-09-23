@@ -265,7 +265,7 @@ function ConnectedPanel({
   const [country, setCountry] = useState<Country>(normalizeCountry(connection.country));
   const [label, setLabel] = useState(connection.filter_label ?? "");
   const [query, setQuery] = useState(connection.filter_query ?? "has:attachment");
-  const [maxMessages, setMaxMessages] = useState(connection.max_messages_per_sync ?? 25);
+  const [maxMessages, setMaxMessages] = useState(connection.max_messages_per_sync ?? 1);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [run, setRun] = useState<ConnectorSyncRun | null>(null);
@@ -292,7 +292,7 @@ function ConnectedPanel({
         filter_label: label || null,
         filter_label_name: folders.find((f) => f.id === label)?.name ?? null,
         filter_query: query,
-        max_messages_per_sync: Number(maxMessages) || 25,
+        max_messages_per_sync: Number(maxMessages) || 1,
       });
       setSaved(true);
       await onChanged();

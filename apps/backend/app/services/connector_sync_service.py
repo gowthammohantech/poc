@@ -13,7 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from app.db.database import get_db
+from pymongo.errors import DuplicateKeyError
+
+from app.db.mongo import get_database, with_id
 from app.services import connector_service, ingest_service
 from app.services.connectors import ConnectorError, MailAttachmentRef, get_connector
 from app.services.processing_service import run_processing_pipeline
@@ -61,29 +63,21 @@ def _min_bytes() -> int:
 
 
 async def get_run(run_id: str) -> Optional[dict]:
-    async with get_db() as db:
-        cursor = await db.execute("SELECT * FROM connector_sync_runs WHERE id = ?", (run_id,))
-        row = await cursor.fetchone()
-        return dict(row) if row else None
+    return with_id(await get_database().connector_sync_runs.find_one({"_id": run_id}))
 
 
 async def list_runs(connection_id: str, limit: int = 20) -> list[dict]:
-    async with get_db() as db:
-        cursor = await db.execute(
-            """SELECT * FROM connector_sync_runs WHERE connection_id = ?
-               ORDER BY started_at DESC LIMIT ?""",
-            (connection_id, limit),
-        )
-        return [dict(r) for r in await cursor.fetchall()]
+    cursor = get_database().connector_sync_runs.find(
+        {"connection_id": connection_id}
+    ).sort("started_at", -1).limit(limit)
+    return [with_id(doc) async for doc in cursor]
 
 
 async def list_run_items(run_id: str) -> list[dict]:
-    async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT * FROM connector_sync_items WHERE run_id = ? ORDER BY created_at",
-            (run_id,),
-        )
-        return [dict(r) for r in await cursor.fetchall()]
+    cursor = get_database().connector_sync_items.find(
+        {"run_id": run_id}
+    ).sort("created_at", 1)
+    return [with_id(doc) async for doc in cursor]
 
 
 # Every stage a document passes through before validation settles it. Wider
@@ -103,53 +97,84 @@ _TOTAL_COLUMNS = (
     "skipped_duplicates", "skipped_unsupported", "skipped_inline",
 )
 
+_READY_DOCUMENT_STATUSES = ("VALID", "COMPLETED")
+
+# Counters a run carries from the moment it is created, so a stats read never
+# has to distinguish "no runs yet" from "a run that has not counted anything".
+_RUN_DEFAULTS: dict = {
+    "messages_scanned": 0,
+    "messages_with_attachments": 0,
+    "attachments_found": 0,
+    "documents_created": 0,
+    "documents_processed": 0,
+    "documents_failed": 0,
+    "skipped_duplicates": 0,
+    "skipped_unsupported": 0,
+    "skipped_inline": 0,
+    "current_activity": None,
+    "error_message": None,
+    "finished_at": None,
+}
+
 
 async def get_connection_stats(connection_id: str) -> dict:
     """What a connection has pulled in so far, without having to start a sync.
 
     Two sources, deliberately: the run counters are a record of what each sync
-    saw in the mailbox, while the invoice counts come from the documents table,
-    because a document keeps moving through the pipeline (and can be reviewed,
-    or fail) long after the run that ingested it has finished.
+    saw in the mailbox, while the invoice counts come from the documents
+    collection, because a document keeps moving through the pipeline (and can be
+    reviewed, or fail) long after the run that ingested it has finished.
     """
-    sums = ", ".join(f"COALESCE(SUM({column}), 0) AS {column}" for column in _TOTAL_COLUMNS)
-    in_flight = ", ".join("?" for _ in _IN_FLIGHT_DOCUMENT_STATUSES)
+    db = get_database()
 
-    async with get_db() as db:
-        cursor = await db.execute(
-            f"""SELECT COUNT(*) AS runs, {sums} FROM connector_sync_runs
-                WHERE connection_id = ?""",
-            (connection_id,),
-        )
-        totals = dict(await cursor.fetchone())
+    run_cursor = await db.connector_sync_runs.aggregate([
+        {"$match": {"connection_id": connection_id}},
+        {"$group": {
+            "_id": None,
+            "runs": {"$sum": 1},
+            **{col: {"$sum": {"$ifNull": [f"${col}", 0]}} for col in _TOTAL_COLUMNS},
+        }},
+    ])
+    run_totals = await run_cursor.to_list(1)
 
-        cursor = await db.execute(
-            """SELECT * FROM connector_sync_runs WHERE connection_id = ?
-               ORDER BY started_at DESC LIMIT 1""",
-            (connection_id,),
-        )
-        row = await cursor.fetchone()
-        last_run = dict(row) if row else None
+    # Aggregating over no runs yields no group at all; the UI wants zeroes.
+    grouped = run_totals[0] if run_totals else {}
+    runs = grouped.get("runs", 0)
+    totals = {col: grouped.get(col, 0) for col in _TOTAL_COLUMNS}
 
-        cursor = await db.execute(
-            f"""SELECT
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN status IN ({in_flight}) THEN 1 ELSE 0 END) AS in_progress,
-                    SUM(CASE WHEN status IN ('VALID', 'COMPLETED') THEN 1 ELSE 0 END) AS ready,
-                    SUM(CASE WHEN status = 'NEEDS_REVIEW' THEN 1 ELSE 0 END) AS needs_review,
-                    -- Extracted, but validation found problems in it.
-                    SUM(CASE WHEN status = 'INVALID' THEN 1 ELSE 0 END) AS invalid,
-                    -- Never got as far as an extraction.
-                    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed
-                FROM documents WHERE source_connector_id = ?""",
-            (*_IN_FLIGHT_DOCUMENT_STATUSES, connection_id),
-        )
-        # SUM() over no rows is NULL; the UI wants zeroes.
-        invoices = {k: (v or 0) for k, v in dict(await cursor.fetchone()).items()}
+    last_run = with_id(await db.connector_sync_runs.find_one(
+        {"connection_id": connection_id},
+        sort=[("started_at", -1)],
+    ))
+
+    def count_if(condition: dict) -> dict:
+        return {"$sum": {"$cond": [condition, 1, 0]}}
+
+    invoice_cursor = await db.documents.aggregate([
+        {"$match": {"source_connector_id": connection_id}},
+        {"$group": {
+            "_id": None,
+            "total": {"$sum": 1},
+            "in_progress": count_if({"$in": ["$status", list(_IN_FLIGHT_DOCUMENT_STATUSES)]}),
+            "ready": count_if({"$in": ["$status", list(_READY_DOCUMENT_STATUSES)]}),
+            "needs_review": count_if({"$eq": ["$status", "NEEDS_REVIEW"]}),
+            # Extracted, but validation found problems in it.
+            "invalid": count_if({"$eq": ["$status", "INVALID"]}),
+            # Never got as far as an extraction.
+            "failed": count_if({"$eq": ["$status", "FAILED"]}),
+        }},
+    ])
+    invoice_totals = await invoice_cursor.to_list(1)
+
+    counted = invoice_totals[0] if invoice_totals else {}
+    invoices = {
+        key: counted.get(key, 0) or 0
+        for key in ("total", "in_progress", "ready", "needs_review", "invalid", "failed")
+    }
 
     return {
         "connection_id": connection_id,
-        "runs": totals.pop("runs", 0),
+        "runs": runs,
         "last_run": last_run,
         "totals": totals,
         "invoices": invoices,
@@ -157,44 +182,44 @@ async def get_connection_stats(connection_id: str) -> dict:
 
 
 async def has_running_sync(connection_id: str) -> bool:
-    async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT 1 FROM connector_sync_runs WHERE connection_id = ? AND status = ? LIMIT 1",
-            (connection_id, STATUS_RUNNING),
-        )
-        return await cursor.fetchone() is not None
+    found = await get_database().connector_sync_runs.find_one(
+        {"connection_id": connection_id, "status": STATUS_RUNNING}, {"_id": 1}
+    )
+    return found is not None
 
 
 async def _update_run(run_id: str, **fields):
     if not fields:
         return
-    assignments = ", ".join(f"{key} = ?" for key in fields)
-    async with get_db() as db:
-        await db.execute(
-            f"UPDATE connector_sync_runs SET {assignments} WHERE id = ?",
-            [*fields.values(), run_id],
-        )
-        await db.commit()
+    bad = [key for key in fields if key.startswith("$") or "." in key]
+    if bad:
+        raise ValueError(f"Invalid field name(s) for update: {', '.join(bad)}")
+    await get_database().connector_sync_runs.update_one(
+        {"_id": run_id}, {"$set": fields}
+    )
 
 
 async def _record_item(run_id: str, connection_id: str, ref: MailAttachmentRef,
                        status: str, document_id: str | None = None,
                        error_message: str | None = None):
-    async with get_db() as db:
-        await db.execute(
-            """INSERT INTO connector_sync_items
-               (id, run_id, connection_id, external_message_id, external_attachment_id,
-                part_index, filename, mime_type, size_bytes, from_address, subject,
-                received_at, document_id, status, error_message, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                str(uuid.uuid4()), run_id, connection_id, ref.message_id, ref.attachment_id,
-                ref.part_index, ref.filename, ref.mime_type, ref.size_bytes,
-                ref.from_address, ref.subject, ref.received_at,
-                document_id, status, error_message, _now(),
-            ),
-        )
-        await db.commit()
+    await get_database().connector_sync_items.insert_one({
+        "_id": str(uuid.uuid4()),
+        "run_id": run_id,
+        "connection_id": connection_id,
+        "external_message_id": ref.message_id,
+        "external_attachment_id": ref.attachment_id,
+        "part_index": ref.part_index,
+        "filename": ref.filename,
+        "mime_type": ref.mime_type,
+        "size_bytes": ref.size_bytes,
+        "from_address": ref.from_address,
+        "subject": ref.subject,
+        "received_at": ref.received_at,
+        "document_id": document_id,
+        "status": status,
+        "error_message": error_message,
+        "created_at": _now(),
+    })
 
 
 # Stages a document can only be sitting in because its run was interrupted.
@@ -215,20 +240,19 @@ async def reap_stale_runs():
     check would treat it as already ingested and skip that attachment on every
     future sync. Marking it FAILED lets the next sync retry it in place.
     """
-    placeholders = ", ".join("?" for _ in _ABANDONED_DOCUMENT_STATUSES)
-    async with get_db() as db:
-        await db.execute(
-            """UPDATE connector_sync_runs
-               SET status = ?, error_message = ?, finished_at = ?
-               WHERE status = ?""",
-            (STATUS_FAILED, "Interrupted by a server restart", _now(), STATUS_RUNNING),
-        )
-        await db.execute(
-            f"""UPDATE documents SET status = 'FAILED', updated_at = ?
-                WHERE source = 'CONNECTOR' AND status IN ({placeholders})""",
-            (_now(), *_ABANDONED_DOCUMENT_STATUSES),
-        )
-        await db.commit()
+    db = get_database()
+    await db.connector_sync_runs.update_many(
+        {"status": STATUS_RUNNING},
+        {"$set": {
+            "status": STATUS_FAILED,
+            "error_message": "Interrupted by a server restart",
+            "finished_at": _now(),
+        }},
+    )
+    await db.documents.update_many(
+        {"source": "CONNECTOR", "status": {"$in": list(_ABANDONED_DOCUMENT_STATUSES)}},
+        {"$set": {"status": "FAILED", "updated_at": _now()}},
+    )
 
 
 # -- starting a sync -------------------------------------------------------
@@ -246,14 +270,15 @@ async def start_sync(connection_id: str, trigger: str = "MANUAL") -> dict:
         raise SyncAlreadyRunning("A sync is already running for this account.")
 
     run_id = str(uuid.uuid4())
-    async with get_db() as db:
-        await db.execute(
-            """INSERT INTO connector_sync_runs
-               (id, connection_id, status, trigger, current_activity, started_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (run_id, connection_id, STATUS_RUNNING, trigger, "Connecting…", _now()),
-        )
-        await db.commit()
+    await get_database().connector_sync_runs.insert_one({
+        **_RUN_DEFAULTS,
+        "_id": run_id,
+        "connection_id": connection_id,
+        "status": STATUS_RUNNING,
+        "trigger": trigger,
+        "current_activity": "Connecting…",
+        "started_at": _now(),
+    })
 
     task = asyncio.create_task(run_sync(run_id, connection_id))
     _TASKS[run_id] = task
@@ -308,7 +333,7 @@ async def run_sync(run_id: str, connection_id: str):
             access_token,
             query=connection.get("filter_query") or None,
             label_id=connection.get("filter_label") or None,
-            max_messages=connection.get("max_messages_per_sync") or 25,
+            max_messages=connection.get("max_messages_per_sync") or 1,
         )
         await _update_run(
             run_id,
@@ -372,6 +397,13 @@ async def run_sync(run_id: str, connection_id: str):
                 await run_processing_pipeline(document_id)
                 counters["documents_processed"] += 1
                 await _record_item(run_id, connection_id, ref, ITEM_INGESTED, document_id=document_id)
+            except DuplicateKeyError:
+                # ux_documents_source_ref refused a second copy of this
+                # attachment, so something ingested it between the check above
+                # and here. Same outcome as the check finding it.
+                logger.info("Attachment %s was already ingested concurrently", ref.filename)
+                await _record_item(run_id, connection_id, ref, ITEM_SKIPPED_DUPLICATE)
+                counters["skipped_duplicates"] += 1
             except Exception as e:
                 logger.exception("Connector sync failed on %s", ref.filename)
                 counters["documents_failed"] += 1

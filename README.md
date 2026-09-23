@@ -13,7 +13,7 @@ Two document regimes, chosen with the **country selector in the top right**:
 - **Backend**: FastAPI + Python 3.12 (port 8000)
 - **AI Orchestration**: Mastra AI with `@mastra/core` (port 4111)
 - **OCR**: Tesseract 5 → PaddleOCR → OpenAI Vision LLM (fallback chain)
-- **Database**: SQLite (aiosqlite)
+- **Database**: MongoDB (PyMongo async)
 - **Storage**: Local filesystem (`storage/uploads/`)
 
 ## Setup
@@ -212,12 +212,12 @@ cd apps/web && npx tsc --noEmit
 
 ```
 apps/
-  backend/           FastAPI + SQLite + OCR engines
+  backend/           FastAPI + MongoDB + OCR engines
     app/
       api/           HTTP route handlers
       services/      Business logic
       ocr_engines/   Tesseract + PaddleOCR
-      db/            SQLite schema + connection
+      db/            Mongo client, indexes and validators
       schemas/       Pydantic models
       connectors/    Mail connectors (Gmail, sample mailbox)
   web/               Next.js frontend

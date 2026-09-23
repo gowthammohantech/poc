@@ -17,11 +17,15 @@ RUN python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requireme
 
 COPY . .
 
-# Create persistent data directories
+# Uploaded originals, page renders and preprocessed images. The database
+# holds paths to these, never the bytes, so /app/data MUST be a mounted
+# volume: without one a redeploy leaves records pointing at files that are
+# gone. A volume also pins this service to one replica, which is why
+# railway.json sets numReplicas to 1.
 RUN mkdir -p /app/data/storage/uploads
 
-ENV DB_PATH=/app/data/invoice_ocr.db
 ENV STORAGE_BASE=/app/data/storage/uploads
+# MONGODB_URI and MONGO_DB_NAME are supplied by the environment.
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
 EXPOSE 8000

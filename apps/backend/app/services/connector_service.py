@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
-from app.db.database import get_db
+from app.db.mongo import get_database, with_id
 from app.services import crypto_service
 from app.services.connectors import ConnectorAuthError, ConnectorError, get_connector
 from app.services.connectors.base import OAuthTokens
@@ -23,11 +23,29 @@ STATUS_ERROR = "ERROR"
 STATUS_DISCONNECTED = "DISCONNECTED"
 
 # Serialise refreshes per connection so two callers don't race to spend the
-# same authorisation code and invalidate each other's token.
+# same authorisation code and invalidate each other's token. This is a
+# per-process dict, so it only holds while the backend runs as one instance.
 _refresh_locks: dict[str, asyncio.Lock] = {}
 
 # Fields that must never leave the backend.
 _SECRET_FIELDS = {"access_token", "refresh_token", "oauth_state"}
+
+# Written on insert so every reader sees the same keys a `SELECT *` used to give.
+_CONNECTION_DEFAULTS: dict = {
+    "account_email": None,
+    "access_token": None,
+    "refresh_token": None,
+    "token_expires_at": None,
+    "scopes": None,
+    "oauth_state": None,
+    "oauth_state_created_at": None,
+    "filter_label": None,
+    "filter_label_name": None,
+    "filter_query": "has:attachment",
+    "max_messages_per_sync": 1,
+    "last_sync_at": None,
+    "last_error": None,
+}
 
 
 def _now() -> str:
@@ -45,7 +63,7 @@ def redirect_uri(provider: str) -> str:
 def connection_country(connection: dict) -> str:
     """The regime a connection's attachments are processed under.
 
-    Rows written before the column existed carry NULL, which is India.
+    Records written before the field existed carry nothing, which is India.
     """
     return normalize_country(connection.get("country") or COUNTRY_INDIA)
 
@@ -55,55 +73,54 @@ def public_view(row: dict) -> dict:
     return {k: v for k, v in row.items() if k not in _SECRET_FIELDS}
 
 
+def _sanitize(fields: dict) -> dict:
+    bad = [key for key in fields if key.startswith("$") or "." in key]
+    if bad:
+        raise ValueError(f"Invalid field name(s) for update: {', '.join(bad)}")
+    return fields
+
+
 # -- reads -----------------------------------------------------------------
 
 
 async def get_connection(connection_id: str) -> Optional[dict]:
-    async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT * FROM connector_connections WHERE id = ?", (connection_id,)
-        )
-        row = await cursor.fetchone()
-        return dict(row) if row else None
+    doc = await get_database().connector_connections.find_one({"_id": connection_id})
+    return with_id(doc)
 
 
 async def list_connections() -> list[dict]:
     """Connections the user actually has.
 
-    PENDING rows are mid-handshake — every abandoned "Connect" click leaves
+    PENDING records are mid-handshake — every abandoned "Connect" click leaves
     one — so they are not connections yet and are not listed.
     """
-    async with get_db() as db:
-        cursor = await db.execute(
-            """SELECT * FROM connector_connections
-               WHERE status NOT IN (?, ?) ORDER BY created_at DESC""",
-            (STATUS_DISCONNECTED, STATUS_PENDING),
-        )
-        return [dict(r) for r in await cursor.fetchall()]
+    cursor = get_database().connector_connections.find(
+        {"status": {"$nin": [STATUS_DISCONNECTED, STATUS_PENDING]}}
+    ).sort("created_at", -1)
+    return [with_id(doc) async for doc in cursor]
 
 
 async def purge_stale_pending():
     """Drop handshakes that were never completed within the state window."""
     cutoff = (datetime.utcnow() - timedelta(minutes=STATE_TTL_MINUTES)).isoformat()
-    async with get_db() as db:
-        await db.execute(
-            """DELETE FROM connector_connections
-               WHERE status = ? AND (oauth_state_created_at IS NULL OR oauth_state_created_at < ?)""",
-            (STATUS_PENDING, cutoff),
-        )
-        await db.commit()
+    await get_database().connector_connections.delete_many({
+        "status": STATUS_PENDING,
+        # A missing field and an explicit null both match None here, which is
+        # what `oauth_state_created_at IS NULL` covered.
+        "$or": [
+            {"oauth_state_created_at": None},
+            {"oauth_state_created_at": {"$lt": cutoff}},
+        ],
+    })
 
 
 async def is_already_ingested(connection_id: str, source_ref: str) -> Optional[dict]:
     """The document this attachment produced on an earlier sync, if any."""
-    async with get_db() as db:
-        cursor = await db.execute(
-            """SELECT id, status FROM documents
-               WHERE source_connector_id = ? AND source_ref = ? LIMIT 1""",
-            (connection_id, source_ref),
-        )
-        row = await cursor.fetchone()
-        return dict(row) if row else None
+    doc = await get_database().documents.find_one(
+        {"source_connector_id": connection_id, "source_ref": source_ref},
+        {"status": 1},
+    )
+    return with_id(doc)
 
 
 # -- writes ----------------------------------------------------------------
@@ -116,13 +133,9 @@ async def update_connection(connection_id: str, **fields):
     if "country" in fields:
         fields["country"] = normalize_country(fields["country"])
     fields["updated_at"] = _now()
-    assignments = ", ".join(f"{key} = ?" for key in fields)
-    async with get_db() as db:
-        await db.execute(
-            f"UPDATE connector_connections SET {assignments} WHERE id = ?",
-            [*fields.values(), connection_id],
-        )
-        await db.commit()
+    await get_database().connector_connections.update_one(
+        {"_id": connection_id}, {"$set": _sanitize(fields)}
+    )
 
 
 async def begin_oauth(provider: str, country: Optional[str] = None) -> tuple[str, str]:
@@ -143,20 +156,20 @@ async def begin_oauth(provider: str, country: Optional[str] = None) -> tuple[str
     state = secrets.token_urlsafe(32)
     now = _now()
 
-    async with get_db() as db:
-        await db.execute(
-            """INSERT INTO connector_connections
-               (id, provider, country, status, oauth_state, oauth_state_created_at,
-                scopes, filter_query, max_messages_per_sync, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                connection_id, provider, normalize_country(country),
-                STATUS_PENDING, state, now,
-                " ".join(connector.default_scopes), "has:attachment",
-                int(os.getenv("CONNECTOR_MAX_MESSAGES_PER_SYNC", "25")), now, now,
-            ),
-        )
-        await db.commit()
+    await get_database().connector_connections.insert_one({
+        **_CONNECTION_DEFAULTS,
+        "_id": connection_id,
+        "provider": provider,
+        "country": normalize_country(country),
+        "status": STATUS_PENDING,
+        "oauth_state": state,
+        "oauth_state_created_at": now,
+        "scopes": " ".join(connector.default_scopes),
+        "filter_query": "has:attachment",
+        "max_messages_per_sync": int(os.getenv("CONNECTOR_MAX_MESSAGES_PER_SYNC", "1")),
+        "created_at": now,
+        "updated_at": now,
+    })
 
     url = connector.build_authorization_url(state=state, redirect_uri=redirect_uri(provider))
     return connection_id, url
@@ -167,18 +180,15 @@ async def complete_oauth(provider: str, *, code: str, state: str) -> dict:
     provider = provider.upper()
     connector = get_connector(provider)
 
-    async with get_db() as db:
-        cursor = await db.execute(
-            """SELECT * FROM connector_connections
-               WHERE provider = ? AND oauth_state = ? AND status = ?""",
-            (provider, state, STATUS_PENDING),
-        )
-        row = await cursor.fetchone()
+    pending = with_id(await get_database().connector_connections.find_one({
+        "provider": provider,
+        "oauth_state": state,
+        "status": STATUS_PENDING,
+    }))
 
-    if not row:
+    if not pending:
         raise ConnectorAuthError("This sign-in link is not valid. Start the connection again.")
 
-    pending = dict(row)
     started = pending.get("oauth_state_created_at")
     if started and datetime.fromisoformat(started) < datetime.utcnow() - timedelta(minutes=STATE_TTL_MINUTES):
         raise ConnectorAuthError("This sign-in link has expired. Start the connection again.")
