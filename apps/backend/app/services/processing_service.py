@@ -9,6 +9,7 @@ import json
 from starlette.concurrency import run_in_threadpool
 
 from app.services import document_service as docs
+from app.services import file_storage_service as storage
 from app.services import mastra_client
 from app.services import us_mastra_client
 from app.services.ocr_service import run_ocr_with_fallback
@@ -34,7 +35,11 @@ async def run_processing_pipeline(document_id: str) -> dict:
     if not pages:
         raise ProcessingError("No pages found. Upload the document first.")
 
-    preprocessed_paths = [p["preprocessed_path"] or p["original_path"] for p in pages]
+    # Mongo points at files this container may never have seen -- a redeploy
+    # starts with an empty cache -- so each one is faulted in from Blob first.
+    preprocessed_paths = await storage.ensure_local_many(
+        [p["preprocessed_path"] or p["original_path"] for p in pages]
+    )
     complexity_reasons = json.loads(doc["complexity_reasons"] or "[]") if doc.get("complexity_reasons") else []
 
     if (doc.get("country") or "INDIA").upper() == COUNTRY_USA:
@@ -247,8 +252,14 @@ async def _run_us_pipeline(document_id: str, doc: dict, pages: list) -> dict:
       * There is no vision-retry-on-INVALID leg. That exists to escalate a
         local-OCR result to vision; this path already started there.
     """
-    original_paths = [p["original_path"] for p in pages if p.get("original_path")]
-    ocr_paths = [p["preprocessed_path"] or p["original_path"] for p in pages]
+    # Mongo points at files this container may never have seen -- a redeploy
+    # starts with an empty cache -- so each one is faulted in from Blob first.
+    original_paths = await storage.ensure_local_many(
+        [p["original_path"] for p in pages if p.get("original_path")]
+    )
+    ocr_paths = await storage.ensure_local_many(
+        [p["preprocessed_path"] or p["original_path"] for p in pages]
+    )
     vision_paths = original_paths or ocr_paths
 
     final_engine = "OPENAI_VISION_LLM"

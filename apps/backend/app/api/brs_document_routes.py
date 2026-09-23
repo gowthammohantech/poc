@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.services import brs_document_service as docs
+from app.services import file_storage_service as storage
 from app.services import brs_mastra_client
 from app.services.brs_validation_service import run_all_brs_rules, determine_brs_validation_status
 from app.ocr_engines.tesseract_engine import run_tesseract
@@ -39,7 +40,10 @@ async def process_brs_document(document_id: str):
     if not pages:
         raise HTTPException(status_code=400, detail="No pages found. Upload the document first.")
 
-    preprocessed_paths = [p["preprocessed_path"] or p["original_path"] for p in pages]
+    # Faulted in from Blob when this container's cache does not have them.
+    preprocessed_paths = await storage.ensure_local_many(
+        [p["preprocessed_path"] or p["original_path"] for p in pages]
+    )
 
     # Step 1: Tesseract OCR to extract raw text as a reference signal
     await docs.update_document_status(document_id, "EXTRACTING")

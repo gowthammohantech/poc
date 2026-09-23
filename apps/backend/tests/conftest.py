@@ -48,6 +48,17 @@ async def _reachable() -> bool:
     return _server_reachable
 
 
+@pytest.fixture(autouse=True)
+def no_real_blob_storage(monkeypatch):
+    """Keep every test on local disk.
+
+    file_storage_service falls back to local-only when this is unset, which is
+    the behaviour the suite asserts. Without this an .env picked up from the
+    environment would silently point the tests at the live storage account.
+    """
+    monkeypatch.delenv("AZURE_STORAGE_CONNECTION_STRING", raising=False)
+
+
 @pytest.fixture
 async def mongo_db(monkeypatch):
     """An empty database with every index and validator applied."""

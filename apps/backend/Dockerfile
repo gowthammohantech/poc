@@ -17,11 +17,12 @@ RUN python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requireme
 
 COPY . .
 
-# Uploaded originals, page renders and preprocessed images. The database
-# holds paths to these, never the bytes, so /app/data MUST be a mounted
-# volume: without one a redeploy leaves records pointing at files that are
-# gone. A volume also pins this service to one replica, which is why
-# railway.json sets numReplicas to 1.
+# Local working cache for originals, page renders and preprocessed images:
+# poppler, OpenCV and Tesseract all need real files on disk. The durable copy
+# lives in Azure Blob (AZURE_STORAGE_CONNECTION_STRING), and anything missing
+# here is faulted back in on demand, so this no longer has to be a mounted
+# volume and a redeploy onto empty disk is recoverable. Mounting one anyway
+# just keeps the cache warm across deploys.
 RUN mkdir -p /app/data/storage/uploads
 
 ENV STORAGE_BASE=/app/data/storage/uploads

@@ -13,13 +13,12 @@ stay.
 
 import uuid
 import json
-import shutil
 from datetime import datetime
 from typing import Optional
 
 from app.db.mongo import get_database, with_id
 from app.schemas.document_schema import DocumentCreate
-from app.services.file_storage_service import STORAGE_BASE
+from app.services import file_storage_service as storage
 
 # Absent keys and SQL NULLs are not the same thing: `SELECT *` always returned
 # every column, and readers index into these dicts directly. Writing the full
@@ -167,11 +166,9 @@ async def delete_documents(document_ids: list[str]) -> int:
     deleted = result.deleted_count
 
     # Files only after the rows are gone: a failed delete must not leave a
-    # document whose pages have vanished.
+    # document whose pages have vanished. Takes the local cache and the blobs.
     for doc_id in ids:
-        folder = STORAGE_BASE / doc_id
-        if folder.resolve().parent == STORAGE_BASE.resolve():
-            shutil.rmtree(folder, ignore_errors=True)
+        await storage.delete_document_files(doc_id)
     return deleted
 
 

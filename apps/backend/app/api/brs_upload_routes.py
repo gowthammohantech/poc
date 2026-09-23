@@ -43,6 +43,7 @@ async def upload_brs(file: UploadFile = File(...)):
     try:
         page_dir = storage.get_page_dir(document_id)
         page_paths = convert_to_pages(original_path, page_dir)
+        await storage.mirror_paths(page_paths)
         await docs.log_step(document_id, "CONVERT", "SUCCESS", f"{len(page_paths)} page(s) created")
     except Exception as e:
         await docs.update_document_status(document_id, "FAILED")
@@ -54,6 +55,7 @@ async def upload_brs(file: UploadFile = File(...)):
     try:
         preprocessed_dir = storage.get_preprocessed_dir(document_id)
         preprocessed_paths = preprocess_pages(page_paths, preprocessed_dir)
+        await storage.mirror_paths(preprocessed_paths)
     except Exception as e:
         preprocessed_paths = page_paths
         await docs.log_step(document_id, "PREPROCESS", "WARNING", str(e))

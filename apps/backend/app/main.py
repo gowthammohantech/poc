@@ -9,11 +9,13 @@ from dotenv import load_dotenv
 # later call would leave every os.getenv default in place.
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.db.mongo import close_client, ensure_indexes, ping
+from app.services import blob_service
+from app.services import file_storage_service as storage
 from app.api.upload_routes import router as upload_router
 from app.api.document_routes import router as document_router
 from app.api.review_routes import router as review_router
@@ -26,6 +28,9 @@ from app.api.brs_matching_routes import router as brs_matching_router
 from app.api.connector_routes import router as connector_router
 from app.services.connector_sync_service import reap_stale_runs
 
+# The local cache root. Nothing is mounted from it any more -- see
+# serve_upload below -- but it is created at boot so the first upload of a
+# fresh container is not the thing that discovers the path is unwritable.
 STORAGE_DIR = Path(os.getenv("STORAGE_BASE", "storage/uploads")).parent
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -35,6 +40,8 @@ async def lifespan(app: FastAPI):
     # Indexes and validators, not a schema: creating them is idempotent, so
     # this runs on every boot the way the old migration scripts did.
     await ensure_indexes()
+    # Idempotent, and a no-op when Azure is not configured.
+    await blob_service.ensure_container()
     # Sync runs live in this process, so anything still marked RUNNING was
     # abandoned by a restart. Close them out or the UI waits forever.
     await reap_stale_runs()
@@ -42,6 +49,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await close_client()
+        await blob_service.close_client()
 
 
 app = FastAPI(
@@ -66,10 +74,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded files from the same configurable location used by the upload
-# service. In production STORAGE_BASE is /app/data/storage/uploads, so mounting
-# the relative ./storage directory would otherwise return 404 for every page.
-app.mount("/storage", StaticFiles(directory=str(STORAGE_DIR)), name="storage")
+
+@app.get("/storage/uploads/{file_path:path}")
+async def serve_upload(file_path: str):
+    """Serve a page render or original, from the local cache or from Blob.
+
+    This replaced a StaticFiles mount. The review UI builds these URLs from
+    the paths in Mongo, so the shape has to stay `/storage/uploads/<key>` --
+    but a container that has never processed the document has nothing on disk
+    to mount, so a miss falls through to the blob of the same key.
+    """
+    local = storage.local_path_for_key(file_path)
+    # file_path comes from the request, so confirm it did not climb out of
+    # the storage root before touching it.
+    if storage.is_within_storage(local) and local.is_file():
+        return FileResponse(local, media_type=blob_service.content_type_for(local.name))
+
+    streamed = await blob_service.open_stream(file_path)
+    if streamed is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    chunks, content_type, size = streamed
+    return StreamingResponse(
+        chunks,
+        media_type=content_type,
+        headers={"Content-Length": str(size), "Cache-Control": "private, max-age=3600"},
+    )
 
 app.include_router(upload_router, prefix="/api/documents", tags=["Upload"])
 app.include_router(document_router, prefix="/api/documents", tags=["Documents"])

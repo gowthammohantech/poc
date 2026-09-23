@@ -6,7 +6,7 @@ trace that would stop a mailbox sync from ingesting its attachment again.
 
 import pytest
 
-from app.services import connector_service, document_service
+from app.services import connector_service, document_service, file_storage_service
 
 # The stage results live on the document now, so deleting it takes them with
 # it. These are the keys that must be gone because the parent is.
@@ -15,10 +15,10 @@ EMBEDDED_STAGES = ("pages", "ocr", "extraction", "validation", "final_output")
 
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
-    """Point the blob layer at a throwaway directory."""
+    """Point the storage layer at a throwaway directory."""
     base = tmp_path / "uploads"
     base.mkdir()
-    monkeypatch.setattr(document_service, "STORAGE_BASE", base)
+    monkeypatch.setattr(file_storage_service, "STORAGE_BASE", base)
     return base
 
 

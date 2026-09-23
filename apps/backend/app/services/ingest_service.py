@@ -146,6 +146,9 @@ async def ingest_bytes(
     try:
         page_dir = storage.get_page_dir(document_id)
         page_paths = await run_in_threadpool(convert_to_pages, original_path, page_dir)
+        # convert_to_pages writes straight to disk, so the renders are mirrored
+        # here rather than inside the storage layer.
+        await storage.mirror_paths(page_paths)
         await docs.log_step(document_id, "CONVERT", "SUCCESS", f"{len(page_paths)} page(s) created")
     except Exception as e:
         await docs.update_document_status(document_id, "FAILED")
@@ -157,6 +160,7 @@ async def ingest_bytes(
     try:
         preprocessed_dir = storage.get_preprocessed_dir(document_id)
         preprocessed_paths = await run_in_threadpool(preprocess_pages, page_paths, preprocessed_dir)
+        await storage.mirror_paths(preprocessed_paths)
     except Exception as e:
         preprocessed_paths = page_paths
         await docs.log_step(document_id, "PREPROCESS", "WARNING", str(e))
